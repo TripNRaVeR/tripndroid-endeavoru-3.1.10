@@ -245,6 +245,16 @@ static void spi_drv_shutdown(struct device *dev)
 	sdrv->shutdown(to_spi_device(dev));
 }
 
+int spi_clock_control(struct spi_device *spi, int c_enable)
+{
+	struct spi_master *master = spi->master;
+	if (master->clock_control == NULL)
+		return -ENOSYS;
+	else
+		return master->clock_control(spi, c_enable);
+}
+EXPORT_SYMBOL_GPL(spi_clock_control);
+
 /**
  * spi_register_driver - register a SPI driver
  * @sdrv: the driver to register
