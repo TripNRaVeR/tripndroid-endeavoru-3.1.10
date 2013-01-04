@@ -63,3 +63,5 @@ obj-$(CONFIG_MAX1749_VIBRATOR)	+= max1749.o
 obj-$(CONFIG_THERM_EST)		+= therm_est.o
 obj-$(CONFIG_TEGRA_THROUGHPUT)	+= tegra-throughput.o
 obj-$(CONFIG_CABLE_DETECT_ACCESSORY)+= cable_detect.o
+obj-$(CONFIG_SENSORS_AK8975_HTC)	+= akm8975_htc.o
+obj-$(CONFIG_SENSORS_AKM8975_PANA_GYRO)	+= ewtzmu2.o
