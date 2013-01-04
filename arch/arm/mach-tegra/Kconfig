@@ -209,6 +209,15 @@ config MACH_TAI
        help
          Support for NVIDIA Tai development platform
 
+config MACH_ENDEAVORU
+	bool "Endeavoru board"
+	depends on ARCH_TEGRA_3x_SOC
+	select MACH_HAS_SND_SOC_TEGRA_MAX98088 if SND_SOC
+	select MACH_HAS_SND_SOC_TEGRA_TLV320AIC326X if SND_SOC
+	select TEGRA_SLOW_CSITE
+	help
+	  Support for HTC EndeavorU phone
+
 config MACH_KAI
        bool "Kai board"
        depends on ARCH_TEGRA_3x_SOC

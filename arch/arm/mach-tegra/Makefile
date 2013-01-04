@@ -198,6 +198,21 @@ obj-${CONFIG_MACH_TEGRA_ENTERPRISE}     += board-enterprise-baseband.o
 obj-${CONFIG_MACH_TEGRA_ENTERPRISE}     += board-enterprise-kbc.o
 obj-${CONFIG_MACH_TEGRA_ENTERPRISE}     += board-enterprise-sensors.o
 
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru.o
+obj-${CONFIG_MACH_ENDEAVORU}    	+= board-endeavoru-panel.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-pinmux.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-sdhci.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-memory.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-power.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-baseband.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-sensors.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-audio.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-camera.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= tegra_flashlight.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= devices_htc.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= htc_audio_power.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= htc_simhotswap.o
+
 obj-${CONFIG_MACH_KAI}                  += board-kai.o
 obj-${CONFIG_MACH_KAI}                  += board-kai-kbc.o
 obj-${CONFIG_MACH_KAI}                  += board-kai-memory.o
