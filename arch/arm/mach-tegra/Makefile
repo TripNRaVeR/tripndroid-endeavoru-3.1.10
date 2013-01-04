@@ -226,3 +226,4 @@ obj-y                                   += eeprom-wifi-mac.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o
 
+obj-${CONFIG_HTC_BATT_CORE}             += htc_battery_core.o
