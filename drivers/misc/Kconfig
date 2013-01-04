@@ -506,6 +506,13 @@ config BMP085
 	  To compile this driver as a module, choose M here: the
 	  module will be called bmp085.
 
+config SENSORS_BMA250
+	tristate "BMA250 acceleration sensor support"
+	depends on I2C && MACH_ENDEAVORU
+	default n
+	help
+	  BMA250 G-sensor Driver.
+
 config PCH_PHUB
 	tristate "Intel EG20T PCH/LAPIS Semicon IOH(ML7213/ML7223/ML7831) PHUB"
 	depends on PCI
