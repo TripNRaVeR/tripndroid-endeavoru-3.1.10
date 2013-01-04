@@ -400,6 +400,21 @@ config SENSORS_AK8975
 	  If you say yes here you get support for Asahi Kasei's
 	  orientation sensor AK8975.
 
+config SENSORS_AK8975_HTC
+	tristate "AK8975 compass support (HTC)"
+	default n
+	depends on I2C && MACH_ENDEAVORU
+	help
+	  Add support for the AK8975 sensor used in the HTC Endeavoru
+
+config SENSORS_AKM8975_PANA_GYRO
+        tristate "AKM8975 Compass Driver for Panasonic Gyroscope"
+	depends on MACH_ENDEAVORU && SENSORS_AK8975_HTC
+	default n        
+	depends on I2C
+        help
+         AKM8975 Compass Driver for Panasonic Gyroscope as found in the HTC Endeavoru.
+
 config SENSORS_NCT1008
 	tristate "ON Semiconductor Temperature Sensor"
 	default n
