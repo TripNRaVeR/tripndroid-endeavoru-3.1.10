@@ -545,6 +545,13 @@ config TEGRA_BB_XMM_POWER2
 	  insert this LKM to initiate 2nd USB enumeration power sequence
 	  - after modem software has been downloaded to flashless device.
 
+config BATTERY_TPS80032
+	bool "HTC battery driver"
+	depends on HTC_BATT_CORE && ADC_TPS80032 && VSYS_ALARM_TPS80032
+	default n
+	help
+	   Add support for HTC battery driver used by the tps80032 chipset
+
 config TEGRA_PLLM_RESTRICTED
 	bool "Restrict PLLM usage as module clock source"
 	depends on !ARCH_TEGRA_2x_SOC
