@@ -97,6 +97,7 @@ unsigned long tegra_lp0_vec_start;
 unsigned long tegra_lp0_vec_size;
 bool tegra_lp0_vec_relocate;
 unsigned long tegra_grhost_aperture = ~0ul;
+unsigned long g_panel_id;
 static   bool is_tegra_debug_uart_hsport;
 static struct board_info pmu_board_info;
 static struct board_info display_board_info;
@@ -522,6 +523,16 @@ static int __init tegra_board_panel_type(char *options)
 	return 1;
 }
 __setup("panel=", tegra_board_panel_type);
+
+static int __init tegra_bootloader_panel_arg(char *options)
+{
+	char *p = options;
+	g_panel_id = memparse(p, &p);
+
+	pr_info("Found panel_vendor: %0lx\n", g_panel_id);
+	return 1;
+}
+__setup("panel_id=", tegra_bootloader_panel_arg);
 
 enum power_supply_type get_power_supply_type(void)
 {
