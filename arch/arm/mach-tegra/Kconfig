@@ -87,6 +87,9 @@ config ARCH_TEGRA_HAS_SATA
 config HTC_BATT_CORE
 	bool
 
+config RAWCHIP_ENABLE
+	bool
+
 config TEGRA_PCI
 	bool "PCIe host controller driver"
 	select PCI
@@ -219,6 +222,7 @@ config MACH_ENDEAVORU
 	select MACH_HAS_SND_SOC_TEGRA_TLV320AIC326X if SND_SOC
 	select TEGRA_SLOW_CSITE
 	select HTC_BATT_CORE
+	select RAWCHIP_ENABLE
 	help
 	  Support for HTC EndeavorU phone
 
