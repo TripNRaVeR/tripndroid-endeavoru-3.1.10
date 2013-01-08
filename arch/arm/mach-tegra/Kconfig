@@ -90,6 +90,9 @@ config HTC_BATT_CORE
 config RAWCHIP_ENABLE
 	bool
 
+config REMOVE_HSIC_L3_STATE
+	bool
+
 config TEGRA_PCI
 	bool "PCIe host controller driver"
 	select PCI
@@ -223,6 +226,7 @@ config MACH_ENDEAVORU
 	select TEGRA_SLOW_CSITE
 	select HTC_BATT_CORE
 	select RAWCHIP_ENABLE
+	select REMOVE_HSIC_L3_STATE
 	help
 	  Support for HTC EndeavorU phone
 
