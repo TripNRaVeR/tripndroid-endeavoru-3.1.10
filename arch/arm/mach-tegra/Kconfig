@@ -517,6 +517,13 @@ config TEGRA_GADGET_BOOST_CPU_FREQ
 	  zero boosting frequency will not be enabled. This value will be
 	  used only by usb gadget driver.
 
+config HTC_USB_NOTIFIER
+	tristate "HTC usb notifier register"
+	default n
+	help
+	  If usb status are change, a usb notifier will callback to 
+	  registered function.
+
 config TEGRA_DYNAMIC_PWRDET
 	bool "Enable dynamic activation of IO level auto-detection"
 	depends on TEGRA_SILICON_PLATFORM
