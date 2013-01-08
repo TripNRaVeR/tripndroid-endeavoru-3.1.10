@@ -521,6 +521,14 @@ config INPUT_ISL29028_CM3628
 	  Say Y here to enable the CM3628 Short Distance Proximity
 	  Sensor with Ambient Light Sensor.
 
+config INPUT_CAPELLA_CM3629
+	tristate "CM3629 proximity and light sensor"
+	depends on MACH_ENDEAVORU
+	default n
+	help
+	  Say Y here to enable the CM3629 Short Distance Proximity
+	  Sensor with Ambient Light Sensor.
+
 config PCH_PHUB
 	tristate "Intel EG20T PCH/LAPIS Semicon IOH(ML7213/ML7223/ML7831) PHUB"
 	depends on PCI
