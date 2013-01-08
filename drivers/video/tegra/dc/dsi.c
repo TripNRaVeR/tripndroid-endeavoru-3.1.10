@@ -3496,6 +3496,43 @@ static void tegra_dc_dsi_resume(struct tegra_dc *dc)
 }
 #endif
 
+static void tegra_dc_send_cmd(struct tegra_dc *dc, struct tegra_dsi_cmd *cmd, int n)
+{
+	struct tegra_dc_dsi_data *dsi;
+	int count = 0;
+	int i = 0;
+	u8 short_cmd[NUM_DSI_INIT_SEQ_DATA_BYTE] = {0};
+
+	dsi = tegra_dc_get_outdata(dc);
+
+	for (i = 0 ; i < n ; i++) {
+		struct tegra_dsi_cmd *cur_cmd = &cmd[i];
+		if (cur_cmd->cmd_type == TEGRA_DSI_DELAY_MS) {
+			mdelay(cur_cmd->sp_len_dly.delay_ms);
+			continue;
+		}
+		if (cur_cmd->pdata == NULL) {
+			short_cmd[count << 1] = cur_cmd->sp_len_dly.sp.data0;
+			short_cmd[(count << 1) + 1] = cur_cmd->sp_len_dly.sp.data1;
+			count++;
+			if ((count % NUM_DSI_INIT_SEQ_DATA) == 0 || i == (n-1)) {
+				tegra_dsi_send_panel_short_cmd(dc, short_cmd, ARRAY_SIZE(short_cmd));
+				memset(short_cmd, 0, NUM_DSI_INIT_SEQ_DATA_BYTE);
+				count = 0;
+			}
+		}
+		else {
+			if (count > 0) {
+				tegra_dsi_send_panel_short_cmd(dc, short_cmd, ARRAY_SIZE(short_cmd));
+				count = 0;
+				mdelay(20);
+			}
+			tegra_dsi_start_host_cmd_v_blank_dcs(dsi, cur_cmd);
+			memset(short_cmd, 0, NUM_DSI_INIT_SEQ_DATA_BYTE);
+		}
+	}
+}
+
 struct tegra_dc_out_ops tegra_dc_dsi_ops = {
 	.init = tegra_dc_dsi_init,
 	.destroy = tegra_dc_dsi_destroy,
@@ -3507,4 +3544,5 @@ struct tegra_dc_out_ops tegra_dc_dsi_ops = {
 	.suspend = tegra_dc_dsi_suspend,
 	.resume = tegra_dc_dsi_resume,
 #endif
+	.send_cmd = tegra_dc_send_cmd,
 };
