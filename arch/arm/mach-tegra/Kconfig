@@ -341,6 +341,11 @@ config TEGRA_CARDHU_DUAL_DSI_PANEL
 	help
 		Support for Dual DSI Panel on Nvidia Cardhu
 
+config RESET_REASON
+	bool "Enable reset reason for EndeavorU to fix reboot bootloader"
+	depends on MACH_ENDEAVORU
+	default n
+
 config TEGRA_EMC_SCALING_ENABLE
 	bool "Enable scaling the memory frequency"
 	depends on TEGRA_SILICON_PLATFORM
