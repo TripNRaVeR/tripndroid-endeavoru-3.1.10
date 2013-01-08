@@ -66,3 +66,4 @@ obj-$(CONFIG_CABLE_DETECT_ACCESSORY)+= cable_detect.o
 obj-$(CONFIG_SENSORS_AK8975_HTC)	+= akm8975_htc.o
 obj-$(CONFIG_SENSORS_AKM8975_PANA_GYRO)	+= ewtzmu2.o
 obj-$(CONFIG_SENSORS_BMA250)	       += bma250.o
+obj-$(CONFIG_INPUT_ISL29028_CM3628)    += cm3628.o

@@ -513,6 +513,14 @@ config SENSORS_BMA250
 	help
 	  BMA250 G-sensor Driver.
 
+config INPUT_ISL29028_CM3628
+	tristate "ISL29028(EVM) or CM3628(EVT) proximity and light sensor"
+	depends on MACH_ENDEAVORU
+	default n
+	help
+	  Say Y here to enable the CM3628 Short Distance Proximity
+	  Sensor with Ambient Light Sensor.
+
 config PCH_PHUB
 	tristate "Intel EG20T PCH/LAPIS Semicon IOH(ML7213/ML7223/ML7831) PHUB"
 	depends on PCI
