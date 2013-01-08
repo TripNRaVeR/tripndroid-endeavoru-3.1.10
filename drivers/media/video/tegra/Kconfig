@@ -56,6 +56,13 @@ config VIDEO_OV2710
           This is a driver for the Omnivision OV2710 camera sensor
           for use with the tegra isp.
 
+config VIDEO_S5K3H2Y
+        tristate "Samsung S5K3H2YX camera sensor support"
+        depends on I2C && ARCH_TEGRA
+        ---help---
+          This is a driver for the Samsung S5K3H2Y 8MP camera sensor
+          for use with the tegra isp.
+
 config VIDEO_AR0832
         tristate "AR0832 camera sensor support"
         depends on I2C && ARCH_TEGRA
