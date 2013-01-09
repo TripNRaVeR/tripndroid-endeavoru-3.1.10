@@ -58,15 +58,20 @@ struct nvmap_handle;
 struct nvmap_client;
 struct nvmap_device;
 
-#define nvmap_ref_to_handle(_ref) (*(struct nvmap_handle **)(_ref))
+#define nvmap_ref_to_handle(_ref) (_ref->handle)
 /* Convert User space handle to Kernel. */
 #define nvmap_convert_handle_u2k(h) (h)
+
+#define NVMAP_MAGIC 0xabab4321
+#define NVMAP_MAGIC_ALLOC(p) do{(*(u32*)p)=NVMAP_MAGIC;}while(0)
+#define NVMAP_MAGIC_FREE(p) do{(*(u32*)p)=0;}while(0)
 
 /* handle_ref objects are client-local references to an nvmap_handle;
  * they are distinct objects so that handles can be unpinned and
  * unreferenced the correct number of times when a client abnormally
  * terminates */
 struct nvmap_handle_ref {
+	__u32 magic;
 	struct nvmap_handle *handle;
 	struct rb_node	node;
 	atomic_t	dupes;	/* number of times to free on file close */
