@@ -7,6 +7,7 @@ subdir-ccflags-y := -Werror
 obj-y				+= avp/
 obj-$(CONFIG_TEGRA_MEDIASERVER)	+= mediaserver/
 obj-$(CONFIG_TEGRA_NVAVP)	+= nvavp/
+obj-y				+= rawchip/
 obj-$(CONFIG_TEGRA_DTV)		+= tegra_dtv.o
 obj-$(CONFIG_TEGRA_CAMERA)	+= tegra_camera.o
 obj-$(CONFIG_VIDEO_AR0832)	+= ar0832_main.o
