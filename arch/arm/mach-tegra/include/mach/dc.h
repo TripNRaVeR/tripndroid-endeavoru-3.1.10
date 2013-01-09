@@ -173,6 +173,7 @@ struct tegra_dsi_out {
 	u8		video_burst_mode;
 
 	u8		suspend_aggr;
+	u8		impedance_para;
 
 	u16		panel_buffer_size_byte;
 	u16		panel_reset_timeout_msec;
