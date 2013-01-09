@@ -393,6 +393,9 @@ struct tegra_dc_out {
 
 	int	(*hotplug_init)(void);
 	int	(*postsuspend)(void);
+
+	int	(*bridge_reset)(void);
+	int	(*ic_reset)(void);
 };
 
 /* bits for tegra_dc_out.flags */
