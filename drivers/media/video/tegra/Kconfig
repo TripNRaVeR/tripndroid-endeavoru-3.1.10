@@ -70,6 +70,13 @@ config VIDEO_S5K6A1GX03
           This is a driver for the Samsung S5K6A1GX03 1.3MP camera sensor
           for use with the tegra isp.
 
+config VIDEO_RAWCHIP
+        tristate "YUSHAN rawchip support"
+        depends on SPI && ARCH_TEGRA
+        ---help---
+          This is a driver for the YUSHAN rawchip
+          for use with camera.
+
 config VIDEO_AR0832
         tristate "AR0832 camera sensor support"
         depends on I2C && ARCH_TEGRA
