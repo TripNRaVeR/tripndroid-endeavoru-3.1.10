@@ -150,6 +150,12 @@ struct tegra_dsi_out {
 	bool		panel_has_frame_buffer;	/* required*/
 	bool		panel_send_dc_frames;
 
+	struct tegra_dsi_cmd	*osc_off_cmd;
+	u16		n_osc_off_cmd;
+
+	struct tegra_dsi_cmd	*osc_on_cmd;
+	u16		n_osc_on_cmd;
+
 	struct tegra_dsi_cmd	*dsi_init_cmd;		/* required */
 	u16		n_init_cmd;			/* required */
 
