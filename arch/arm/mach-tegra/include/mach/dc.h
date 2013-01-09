@@ -384,6 +384,8 @@ struct tegra_dc_out {
 	bool			user_needs_vblank;
 	struct completion	user_vblank_comp;
 
+	int 			video_min_bw;
+
 	int	(*enable)(void);
 	int	(*postpoweron)(void);
 	int	(*prepoweroff)(void);
