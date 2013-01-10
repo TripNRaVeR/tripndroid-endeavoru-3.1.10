@@ -53,8 +53,11 @@ static int g_i;
  * e.g. insmod raw_ip_net.ko max_intfs=5
  */
 static int max_intfs = 2;	/* default number of interfaces */
-
+#ifdef CONFIG_MACH_ENDEAVORU
+static unsigned long usb_net_raw_ip_intf[MAX_INTFS] = { 3, 5, 7, 11, 13};
+#else
 static unsigned long usb_net_raw_ip_intf[MAX_INTFS] = { 3, 5, 9, 11, 13};
+#endif
 unsigned long usb_net_raw_ip_rx_debug;
 unsigned long usb_net_raw_ip_tx_debug;
 
