@@ -184,12 +184,9 @@ struct tps80031_pupd_init_data {
 	int setting;
 };
 
-struct tps80031_bg_platform_data {
-	int irq_base;
-	int battery_present;
-};
-
 struct tps80031_platform_data {
+	int num_subdevs;
+	struct tps80031_subdev_info *subdevs;
 	int gpio_base;
 	int irq_base;
 	struct tps80031_32kclock_plat_data *clk32k_pdata;
@@ -200,13 +197,16 @@ struct tps80031_platform_data {
 	bool use_power_off;
 	struct tps80031_pupd_init_data *pupd_init_data;
 	int pupd_init_data_size;
-	struct tps80031_regulator_platform_data **regulator_pdata;
-	int num_regulator_pdata;
-	struct tps80031_rtc_platform_data *rtc_pdata;
-	struct tps80031_bg_platform_data *bg_pdata;
-	struct tps80031_charger_platform_data *battery_charger_pdata;
+#ifdef CONFIG_PM
+	void (*suspend_work)(void);
+	void (*resume_work)(void);
+#endif
 };
 
+struct tps80031_bg_platform_data {
+	int irq_base;
+	int battery_present;
+};
 
 /*
  * NOTE: the functions below are not intended for use outside
@@ -229,6 +229,10 @@ extern int tps80031_force_update(struct device *dev, int sid, int reg,
 extern int tps80031_ext_power_req_config(struct device *dev,
 		unsigned long ext_ctrl_flag, int preq_bit,
 		int state_reg_add, int trans_reg_add);
+
+extern int tps80031_power_off(void);
+
+extern int tps80031_power_off_or_reboot(void);
 
 extern unsigned long tps80031_get_chip_info(struct device *dev);
 
