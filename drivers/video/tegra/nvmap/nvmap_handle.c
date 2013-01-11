@@ -909,7 +909,7 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 
 	if (h->owner == client)
 		h->owner = NULL;
-
+	NVMAP_MAGIC_FREE(ref);
 	kfree(ref);
 
 out:
@@ -975,6 +975,7 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	ref->handle = h;
 	atomic_set(&ref->pin, 0);
 	add_handle_ref(client, ref);
+	NVMAP_MAGIC_ALLOC(ref);
 	trace_nvmap_create_handle(client, h, size, ref);
 	return ref;
 }
@@ -1049,6 +1050,7 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	ref->handle = h;
 	atomic_set(&ref->pin, 0);
 	add_handle_ref(client, ref);
+	NVMAP_MAGIC_ALLOC(ref);
 	trace_nvmap_duplicate_handle_id(client, id, ref);
 	return ref;
 }
