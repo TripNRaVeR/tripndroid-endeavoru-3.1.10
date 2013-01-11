@@ -25,9 +25,12 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/utsname.h>
-
+#include <linux/delay.h>
 #include <linux/usb/composite.h>
 #include <asm/unaligned.h>
+#include <mach/board_htc.h>
+
+static bool is_mtp_enabled;
 
 /*
  * The code in this file is utility code, used to build a gadget driver
@@ -37,10 +40,12 @@
  */
 
 /* big enough to hold our biggest descriptor */
-#define USB_BUFSIZ	1024
+#define USB_BUFSIZ	4096
 
 static struct usb_composite_driver *composite;
 static int (*composite_gadget_bind)(struct usb_composite_dev *cdev);
+static void mtp_update_mode(int _mac_mtp_mode);
+static void fsg_update_mode(int _linux_fsg_mode);
 
 /* Some systems will need runtime overrides for the  product identifiers
  * published in the device descriptor, either numbers or strings or both.
@@ -72,6 +77,55 @@ module_param(iSerialNumber, charp, 0);
 MODULE_PARM_DESC(iSerialNumber, "SerialNumber string");
 
 static char composite_manufacturer[50];
+int htcctusbcmd;
+
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", sdev->name);
+}
+
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+
+	return sprintf(buf, "%s\n", (htcctusbcmd ? "Capture" : "None"));
+}
+
+struct switch_dev compositesdev = {
+	.name = "htcctusbcmd",
+	.print_name = print_switch_name,
+	.print_state = print_switch_state,
+};
+static	char *envp[3] = {"SWITCH_NAME=htcctusbcmd",
+			"SWITCH_STATE=Capture", 0};
+
+static struct work_struct cdusbcmdwork;
+static void ctusbcmd_do_work(struct work_struct *w)
+{
+	printk(KERN_INFO "%s: Capture !\n", __func__);
+	kobject_uevent_env(&compositesdev.dev->kobj, KOBJ_CHANGE, envp);
+}
+
+static void composite_disconnect(struct usb_gadget *gadget);
+static int usb_autobot_mode(void);
+void usb_composite_force_reset(struct usb_composite_dev *cdev);
+#define REQUEST_RESET_DELAYED msecs_to_jiffies(100)
+static void composite_request_reset(struct work_struct *w)
+{
+	struct usb_composite_dev *cdev = container_of(
+			(struct delayed_work *)w,
+			struct usb_composite_dev, request_reset);
+	if (cdev) {
+		if (usb_autobot_mode() || board_mfg_mode()) return;
+
+		INFO(cdev, "%s\n", __func__);
+		if (os_type == OS_LINUX)
+			fsg_update_mode(1);
+		else
+			fsg_update_mode(0);
+		composite_disconnect(cdev->gadget);
+		usb_composite_force_reset(cdev);
+	}
+}
 
 /*-------------------------------------------------------------------------*/
 /**
@@ -197,6 +251,23 @@ ep_found:
 		}
 	}
 	return 0;
+}
+
+void usb_composite_force_reset(struct usb_composite_dev *cdev)
+{
+	unsigned long			flags;
+
+	spin_lock_irqsave(&cdev->lock, flags);
+	/* force reenumeration */
+	if (cdev && cdev->gadget && cdev->gadget->speed != USB_SPEED_UNKNOWN) {
+		spin_unlock_irqrestore(&cdev->lock, flags);
+
+		usb_gadget_disconnect(cdev->gadget);
+		msleep(500);
+		usb_gadget_connect(cdev->gadget);
+	} else {
+		spin_unlock_irqrestore(&cdev->lock, flags);
+	}
 }
 
 /**
@@ -551,9 +622,9 @@ static int bos_desc(struct usb_composite_dev *cdev)
 	if (cdev->gadget->ops->get_config_params)
 		cdev->gadget->ops->get_config_params(&dcd_config_params);
 	else {
-		dcd_config_params.bU1devExitLat = USB_DEFULT_U1_DEV_EXIT_LAT;
+		dcd_config_params.bU1devExitLat = USB_DEFAULT_U1_DEV_EXIT_LAT;
 		dcd_config_params.bU2DevExitLat =
-			cpu_to_le16(USB_DEFULT_U2_DEV_EXIT_LAT);
+			cpu_to_le16(USB_DEFAULT_U2_DEV_EXIT_LAT);
 	}
 	ss_cap->bU1devExitLat = dcd_config_params.bU1devExitLat;
 	ss_cap->bU2DevExitLat = dcd_config_params.bU2DevExitLat;
@@ -1145,6 +1216,23 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 				break;
 			/* FALLTHROUGH */
 		case USB_DT_CONFIG:
+			if (w_length == 4) {
+				pr_info("[USB] %s: OS_MAC\n", __func__);
+				os_type = OS_MAC;
+				mtp_update_mode(1);
+			} else if (w_length == 255) {
+				pr_info("[USB] %s: OS_WINDOWS\n", __func__);
+				os_type = OS_WINDOWS;
+			} else if (w_length == 9 && os_type != OS_WINDOWS) {
+				pr_info("[USB] %s: OS_LINUX\n", __func__);
+				if (os_type != OS_LINUX) {
+					os_type = OS_LINUX;
+					schedule_delayed_work(
+						&cdev->request_reset,
+						REQUEST_RESET_DELAYED);
+				}
+			}
+
 			value = config_desc(cdev, w_value);
 			if (value >= 0)
 				value = min(w_length, (u16) value);
@@ -1363,6 +1451,10 @@ static void composite_disconnect(struct usb_gadget *gadget)
 		reset_config(cdev);
 	if (composite->disconnect)
 		composite->disconnect(cdev);
+	if (cdev->delayed_status != 0) {
+		WARN(cdev, "%s: delayed_status is not 0 in disconnect status\n", __func__);
+		cdev->delayed_status = 0;
+	}
 	spin_unlock_irqrestore(&cdev->lock, flags);
 }
 
@@ -1451,6 +1543,7 @@ static int composite_bind(struct usb_gadget *gadget)
 	cdev->bufsiz = USB_BUFSIZ;
 	cdev->driver = composite;
 
+	INIT_DELAYED_WORK(&cdev->request_reset, composite_request_reset);
 	/*
 	 * As per USB compliance update, a device that is actively drawing
 	 * more than 100mA from USB must report itself as bus-powered in
@@ -1621,6 +1714,7 @@ static struct usb_gadget_driver composite_driver = {
 int usb_composite_probe(struct usb_composite_driver *driver,
 			       int (*bind)(struct usb_composite_dev *cdev))
 {
+	int rc;
 	if (!driver || !driver->dev || !bind || composite)
 		return -EINVAL;
 
@@ -1634,6 +1728,11 @@ int usb_composite_probe(struct usb_composite_driver *driver,
 				     (u8)driver->max_speed);
 	composite = driver;
 	composite_gadget_bind = bind;
+
+	rc = switch_dev_register(&compositesdev);
+	INIT_WORK(&cdusbcmdwork, ctusbcmd_do_work);
+	if (rc < 0)
+		pr_err("%s: switch_dev_register fail", __func__);
 
 	return usb_gadget_probe_driver(&composite_driver, composite_bind);
 }

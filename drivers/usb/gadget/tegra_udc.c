@@ -47,9 +47,13 @@
 
 #include <mach/usb_phy.h>
 #include <mach/iomap.h>
-
+#include <linux/usb/htc_info.h>
 #include "tegra_udc.h"
 
+#include <mach/htc_battery_common.h>
+
+#define VBUS_WAKEUP_ENR 19
+extern int global_wakeup_state;
 
 #define	DRIVER_DESC	"Nvidia Tegra High-Speed USB SOC \
 					Device Controller driver"
@@ -62,12 +66,6 @@
 						&udc->eps[pipe])
 #define get_pipe_by_windex(windex)	((windex & USB_ENDPOINT_NUMBER_MASK) \
 					* 2 + ((windex & USB_DIR_IN) ? 1 : 0))
-
-#define ep_index(EP)	((EP)->desc->bEndpointAddress&0xF)
-#define ep_is_in(EP)	((ep_index(EP) == 0) ? (EP->udc->ep0_dir == \
-				USB_DIR_IN) : ((EP)->desc->bEndpointAddress \
-				& USB_DIR_IN) == USB_DIR_IN)
-
 
 static const char driver_name[] = "tegra-udc";
 static const char driver_desc[] = DRIVER_DESC;
@@ -94,7 +92,13 @@ static const u8 tegra_udc_test_packet[53] = {
 	0xfc, 0x7e, 0xbf, 0xdf, 0xef, 0xf7, 0xfb, 0xfd, 0x7e
 };
 
-static struct tegra_udc *the_udc;
+struct tegra_udc *the_udc;
+extern int USB_disabled;
+
+static int reset_queues_mute(struct tegra_udc *udc);
+#define IO_USB_BASE   0x7D000000
+#define UTMIP_HSRX_CFG1		0x814
+#define UTMIP_HS_SYNC_START_DLY(x)	(((x) & 0x1f) << 1)
 
 #ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
 	static struct pm_qos_request_list boost_cpu_freq_req;
@@ -112,6 +116,27 @@ static inline unsigned int udc_readl(struct tegra_udc *udc, u32 offset)
 	return readl(udc->regs + offset);
 }
 
+static int ep_index(struct tegra_ep *ep)
+{
+	if (ep->desc)
+		return ep->desc->bEndpointAddress&0xF;
+	else {
+		pr_err("[USB] ep->desc is null\n");
+		return -1;
+	}
+}
+
+static int ep_is_in(struct tegra_ep *ep)
+{
+	if (ep->desc)
+		return (ep_index(ep) == 0) ? (ep->udc->ep0_dir == USB_DIR_IN)
+			 :((ep->desc->bEndpointAddress & USB_DIR_IN) == USB_DIR_IN);
+	else {
+		pr_err("[USB] ep->desc is null\n");
+		return 0;
+	}
+}
+
 /* checks vbus status */
 static inline bool vbus_enabled(struct tegra_udc *udc)
 {
@@ -119,6 +144,8 @@ static inline bool vbus_enabled(struct tegra_udc *udc)
 	status = (udc_readl(udc, VBUS_WAKEUP_REG_OFFSET) & USB_SYS_VBUS_STATUS);
 	return status;
 }
+
+#include "htc_setting.c"
 
 /**
  * done() - retire a request; caller blocked irqs
@@ -532,8 +559,7 @@ static int tegra_ep_enable(struct usb_ep *_ep,
 	ep = container_of(_ep, struct tegra_ep, ep);
 
 	/* catch various bogus parameters */
-	if (!_ep || !desc || ep->desc
-			|| (desc->bDescriptorType != USB_DT_ENDPOINT))
+	if (!_ep || !desc)
 		return -EINVAL;
 
 	udc = ep->udc;
@@ -660,7 +686,7 @@ static int tegra_ep_disable(struct usb_ep *_ep)
 			}
 		}
 	}
-	ep->last_td =0;
+	ep->last_td = 0;
 	ep->last_dtd_count = 0;
 	spin_unlock_irqrestore(&udc->lock, flags);
 
@@ -977,32 +1003,38 @@ err_unmap:
 static int tegra_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct tegra_ep *ep = container_of(_ep, struct tegra_ep, ep);
-	struct tegra_req *req;
+	struct tegra_req *req = container_of(_req, struct tegra_req, req);
 	struct tegra_udc *udc = ep->udc;
 	unsigned long flags;
-	int ep_num, stopped, ret = 0;
+	int ep_num, ep_in, stopped, ret = 0;
 	u32 epctrl;
 
-	if (!_ep || !_req)
+	if (_ep == NULL || _req == NULL || ep->desc == NULL
+			|| list_empty(&req->queue) || !udc) {
 		return -EINVAL;
-
+	}
 	spin_lock_irqsave(&ep->udc->lock, flags);
 	stopped = ep->stopped;
 
 	/* Stop the ep before we deal with the queue */
 	ep->stopped = 1;
 	ep_num = ep_index(ep);
+	ep_in = ep_is_in(ep);
 
 	/* Touch the registers if cable is connected and phy is on */
 	if (vbus_enabled(udc)) {
 		epctrl = udc_readl(udc, EP_CONTROL_REG_OFFSET + (ep_num * 4));
-		if (ep_is_in(ep))
+		if (ep_in)
 			epctrl &= ~EPCTRL_TX_ENABLE;
 		else
 			epctrl &= ~EPCTRL_RX_ENABLE;
 		udc_writel(udc, epctrl, EP_CONTROL_REG_OFFSET + (ep_num * 4));
 	}
 
+	/* After compared with other driver coding,
+	 * cannot see any benefit to check the request
+	 */
+#if 0
 	/* make sure it's actually queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
 		if (&req->req == _req)
@@ -1012,6 +1044,7 @@ static int tegra_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		ret = -EINVAL;
 		goto out;
 	}
+#endif
 
 	/* The request is in progress, or completed but not dequeued */
 	if (ep->queue.next == &req->queue) {
@@ -1043,18 +1076,16 @@ static int tegra_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	done(ep, req, -ECONNRESET);
 
 	/* Enable EP */
-out:
 	/* Touch the registers if cable is connected and phy is on */
 	if (vbus_enabled(udc)) {
 		epctrl = udc_readl(udc, EP_CONTROL_REG_OFFSET + (ep_num * 4));
-		if (ep_is_in(ep))
+		if (ep_in)
 			epctrl |= EPCTRL_TX_ENABLE;
 		else
 			epctrl |= EPCTRL_RX_ENABLE;
 		udc_writel(udc, epctrl, EP_CONTROL_REG_OFFSET + (ep_num * 4));
 	}
 	ep->stopped = stopped;
-
 	spin_unlock_irqrestore(&ep->udc->lock, flags);
 	return ret;
 }
@@ -1240,76 +1271,6 @@ static int tegra_set_selfpowered(struct usb_gadget *gadget, int is_on)
 	return 0;
 }
 
-static int tegra_usb_set_charging_current(struct tegra_udc *udc)
-{
-	int max_ua;
-
-	if (NULL == udc->vbus_reg)
-		return 0;
-
-	switch (udc->connect_type) {
-	case CONNECT_TYPE_NONE:
-		pr_debug("detected USB charging is disabled");
-		max_ua = 0;
-		break;
-	case CONNECT_TYPE_SDP:
-		pr_debug("detected SDP port");
-		max_ua = USB_CHARGING_SDP_CURRENT_LIMIT_UA;
-		break;
-	case CONNECT_TYPE_DCP:
-		pr_debug("detected DCP port(wall charger)");
-		max_ua = USB_CHARGING_DCP_CURRENT_LIMIT_UA;
-		break;
-	case CONNECT_TYPE_CDP:
-		pr_debug("detected CDP port(1A USB port)");
-		max_ua = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
-		break;
-	case CONNECT_TYPE_NON_STANDARD_CHARGER:
-		pr_debug("detected non-standard charging port");
-		max_ua = USB_CHARGING_NON_STANDARD_CHARGER_CURRENT_LIMIT_UA;
-		break;
-	default:
-		pr_debug("detected USB charging type is unknown");
-		max_ua = 0;
-	}
-
-	return regulator_set_current_limit(udc->vbus_reg, 0, max_ua);
-}
-
-static void tegra_detect_charging_type_is_cdp_or_dcp(struct tegra_udc *udc)
-{
-	u32 portsc;
-	u32 temp;
-	unsigned long flags;
-
-	/* use spinlock to prevent kernel preemption here */
-	spin_lock_irqsave(&udc->lock, flags);
-
-	/* set controller to run which cause D+ pull high */
-	temp = udc_readl(udc, USB_CMD_REG_OFFSET);
-	temp |= USB_CMD_RUN_STOP;
-	udc_writel(udc, temp, USB_CMD_REG_OFFSET);
-
-	udelay(10);
-
-	/* use D+ and D- status to check it is CDP or DCP */
-	portsc = udc_readl(udc, PORTSCX_REG_OFFSET) & PORTSCX_LINE_STATUS_BITS;
-	if (portsc == (PORTSCX_LINE_STATUS_DP_BIT | PORTSCX_LINE_STATUS_DM_BIT))
-		udc->connect_type = CONNECT_TYPE_DCP;
-	else if (portsc == PORTSCX_LINE_STATUS_DP_BIT)
-		udc->connect_type = CONNECT_TYPE_CDP;
-	else
-		/*
-		 * If it take more 100mS between D+ pull high and read Line
-		 * Status, host might initiate the RESET, then we see both
-		 * line status as 0 (SE0). This really should not happen as we
-		 * disabled the kernel preemption before reaching here.
-		 */
-		BUG();
-
-	spin_unlock_irqrestore(&udc->lock, flags);
-}
-
 /**
  * Notify controller that VBUS is powered, called by whatever
  * detects VBUS sessions
@@ -1318,8 +1279,9 @@ static int tegra_vbus_session(struct usb_gadget *gadget, int is_active)
 {
 	struct tegra_udc *udc = container_of(gadget, struct tegra_udc, gadget);
 	unsigned long flags;
-	DBG("%s(%d) turn VBUS state from %s to %s", __func__, __LINE__,
+	USB_INFO("%s(%d) turn VBUS state from %s to %s", __func__, __LINE__,
 		udc->vbus_active ? "on" : "off", is_active ? "on" : "off");
+	wake_lock_timeout(&udc_wake_lock2, 1*HZ);
 
 	if (udc->vbus_active && !is_active) {
 		/* If cable disconnected, cancel any delayed work */
@@ -1332,38 +1294,48 @@ static int tegra_vbus_session(struct usb_gadget *gadget, int is_active)
 		dr_controller_reset(udc);
 		udc->vbus_active = 0;
 		udc->usb_state = USB_STATE_DEFAULT;
-		udc->connect_type = CONNECT_TYPE_NONE;
 		spin_unlock_irqrestore(&udc->lock,flags);
 		tegra_usb_phy_power_off(udc->phy);
-		tegra_usb_set_charging_current(udc);
-	} else if (!udc->vbus_active && is_active) {
-		tegra_usb_phy_power_on(udc->phy);
-		/* setup the controller in the device mode */
-		dr_controller_setup(udc);
-		/* setup EP0 for setup packet */
-		ep0_setup(udc);
-		/* initialize the USB and EP states */
-		udc->usb_state = USB_STATE_ATTACHED;
-		udc->ep0_state = WAIT_FOR_SETUP;
-		udc->ep0_dir = 0;
-		udc->vbus_active = 1;
-		if (tegra_usb_phy_charger_detected(udc->phy)) {
-			tegra_detect_charging_type_is_cdp_or_dcp(udc);
-		} else {
-			udc->connect_type = CONNECT_TYPE_SDP;
-			/*
-			 * Schedule work to wait for 1000 msec and check for
-			 * a non-standard charger if setup packet is not
-			 * received.
-			 */
-			schedule_delayed_work(&udc->work, msecs_to_jiffies(
-					USB_CHARGER_DETECTION_WAIT_TIME_MS));
+		if (udc->vbus_reg) {
+			/* set the current limit to 0mA */
+			regulator_set_current_limit(
+				udc->vbus_reg, 0, 0);
 		}
-		/* start the controller */
-		dr_controller_run(udc);
-		tegra_usb_set_charging_current(udc);
+		udc->connect_type = CONNECT_TYPE_NONE;
+		cancel_delayed_work_sync(&udc->ac_detect_work);
+		queue_work(udc->usb_wq, &udc->notifier_work);
+	} else if (!udc->vbus_active && is_active) {
+		if (!USB_disabled) {
+			tegra_usb_phy_power_on(udc->phy);
+			/* setup the controller in the device mode */
+			dr_controller_setup(udc);
+			/* setup EP0 for setup packet */
+			ep0_setup(udc);
+			/* initialize the USB and EP states */
+			udc->usb_state = USB_STATE_ATTACHED;
+			udc->ep0_state = WAIT_FOR_SETUP;
+			udc->ep0_dir = 0;
+			udc->vbus_active = 1;
+			/* start the controller */
+			dr_controller_run(udc);
+		} else {
+			USB_INFO("%s (%d) USB_disable", __func__, is_active);
+			tegra_usb_phy_power_on(udc->phy);
+			udc->vbus_active = 1;
+			udc->usb_state = USB_STATE_DEFAULT;
+		}
+		if (udc->vbus_reg) {
+			/* set the current limit to 100mA */
+			regulator_set_current_limit(
+				udc->vbus_reg, 0, 100);
+		}
+		udc->ac_detect_count = 0;
+		/* Schedule work to wait for 1000 msec and check for
+		 * charger if setup packet is not received */
+		schedule_delayed_work(&udc->work,
+			USB_CHARGER_DETECTION_WAIT_TIME_MS);
+		charger_detect(udc);
 	}
-
 	return 0;
 }
 
@@ -1605,13 +1577,19 @@ static void ch9getstatus(struct tegra_udc *udc, u8 request_type, u16 value,
 stall:
 	ep0stall(udc);
 }
-
+struct delayed_work disable_charger_hizmode_work;
+static void disable_charger_hizmode(struct work_struct *data)
+{
+	USB_INFO(" %s\n", __func__);
+	htc_battery_charger_hiz();
+}
 static void udc_test_mode(struct tegra_udc *udc, u32 test_mode)
 {
 	struct tegra_req *req;
 	struct tegra_ep *ep;
 	u32 portsc, bitmask;
 	unsigned long timeout;
+	u32 val;
 
 	/* Ack the ep0 IN */
 	if (ep0_prime_status(udc, EP_DIR_IN))
@@ -1641,6 +1619,10 @@ static void udc_test_mode(struct tegra_udc *udc, u32 test_mode)
 		VDBG("TEST_K\n");
 		break;
 	case PORTSCX_PTC_SEQNAK:
+		val = udc_readl(udc, UTMIP_HSRX_CFG1);
+		val &= ~UTMIP_HS_SYNC_START_DLY(~0);
+		val |= UTMIP_HS_SYNC_START_DLY(0x2);
+		udc_writel(udc, val, UTMIP_HSRX_CFG1);
 		VDBG("TEST_SE0_NAK\n");
 		break;
 	case PORTSCX_PTC_PACKET:
@@ -1656,6 +1638,10 @@ static void udc_test_mode(struct tegra_udc *udc, u32 test_mode)
 		/* allocate a small amount of memory to get valid address */
 		req->req.buf = kmalloc(sizeof(tegra_udc_test_packet),
 					GFP_ATOMIC);
+		if (req->req.buf == NULL) {
+			ERR("malloc req->req.buf failed\n");
+			goto stall;
+		}
 		req->req.dma = virt_to_phys(req->req.buf);
 
 		/* Fill in the reqest structure */
@@ -1704,7 +1690,7 @@ static void udc_test_mode(struct tegra_udc *udc, u32 test_mode)
 	 * in "Set Feature".
 	 * See USB 2.0 spec, section 7.1.20 for test modes.
 	 */
-	pr_info("udc entering the test mode, power cycle to exit test mode\n");
+	USB_INFO("udc entering the test mode, power cycle to exit test mode\n");
 	return;
 stall:
 	ep0stall(udc);
@@ -1748,6 +1734,10 @@ static void setup_received_irq(struct tegra_udc *udc,
 
 		if (setup->bRequestType == USB_RECIP_DEVICE &&
 				 wValue == USB_DEVICE_TEST_MODE) {
+
+			/* disable battery charger in test mode */
+			schedule_delayed_work(&disable_charger_hizmode_work, 0);
+
 			/*
 			 * If the feature selector is TEST_MODE, then the most
 			 * significant byte of wIndex is used to specify the
@@ -1922,7 +1912,8 @@ static int process_ep_req(struct tegra_udc *udc, int pipe,
 		errors = le32_to_cpu(curr_td->size_ioc_sts);
 		if (errors & DTD_ERROR_MASK) {
 			if (errors & DTD_STATUS_HALTED) {
-				ERR("dTD error %08x QH=%d\n", errors, pipe);
+				/* ERR("dTD error %08x QH=%d\n", errors, pipe); */
+				USB_INFO("dTD error %08x QH=%d\n", errors, pipe);
 				/* Clear the errors and Halt condition */
 				tmp = le32_to_cpu(curr_qh->size_ioc_int_sts);
 				tmp &= ~errors;
@@ -2097,6 +2088,22 @@ static int reset_queues(struct tegra_udc *udc)
 	return 0;
 }
 
+/* Clear up all ep queues */
+static int reset_queues_mute(struct tegra_udc *udc)
+{
+	u8 pipe;
+	for (pipe = 0; pipe < udc->max_pipes; pipe++)
+		udc_reset_ep_queue(udc, pipe);
+
+	/* report disconnect; the driver is already quiesced */
+	spin_unlock(&udc->lock);
+	if (udc->driver && udc->driver->mute_disconnect)
+		udc->driver->mute_disconnect(&udc->gadget);
+	spin_lock(&udc->lock);
+
+	return 0;
+}
+
 /* Process reset interrupt */
 static void reset_irq(struct tegra_udc *udc)
 {
@@ -2144,7 +2151,8 @@ static void reset_irq(struct tegra_udc *udc)
 	 * is not set. Reset all the queues, include XD, dTD, EP queue
 	 * head and TR Queue */
 	VDBG("Bus reset");
-	reset_queues(udc);
+	/* reset_queues(udc); */
+	reset_queues_mute(udc);
 	udc->usb_state = USB_STATE_DEFAULT;
 }
 
@@ -2191,18 +2199,26 @@ static void tegra_udc_irq_work(struct work_struct *irq_work)
 	DBG("%s(%d) END\n", __func__, __LINE__);
 }
 
-/*
- * When VBUS is detected we already know it is DCP/SDP/CDP devices if it is a
- * standard device; If we did not receive EP0 setup packet, we can assuming it
- * is a charger capable of 1.8A charging.
+/**
+ * If VBUS is detected and setup packet is not received in 100ms then
+ * work thread starts and checks for the USB charger detection.
  */
 static void tegra_udc_charger_detect_work(struct work_struct *work)
 {
 	struct tegra_udc *udc = container_of(work, struct tegra_udc, work.work);
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
-	udc->connect_type = CONNECT_TYPE_NON_STANDARD_CHARGER;
-	tegra_usb_set_charging_current(udc);
+	/* check for the platform charger detection */
+	if (tegra_usb_phy_charger_detected(udc->phy)) {
+		USB_INFO("USB compliant charger detected\n");
+		/* check udc regulator is available for drawing vbus current*/
+		if (udc->vbus_reg) {
+			/* set the current limit in uA */
+			regulator_set_current_limit(
+				udc->vbus_reg, 0,
+				USB_CHARGING_CURRENT_LIMIT_MA*1000);
+		}
+	}
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
 }
@@ -2247,17 +2263,16 @@ static irqreturn_t tegra_udc_irq(int irq, void *_udc)
 	}
 
 	/* Disable ISR for OTG host mode */
-	if (udc->stopped)
-		goto done;
+	if (udc->stopped) {
+		spin_unlock_irqrestore(&udc->lock, flags);
+		return status;
+	}
 
 	/* Fence read for coherency of AHB master intiated writes */
 	readb(IO_ADDRESS(IO_PPCS_PHYS + USB1_PREFETCH_ID));
 
 	irq_src = udc_readl(udc, USB_STS_REG_OFFSET) &
 				udc_readl(udc, USB_INTR_REG_OFFSET);
-
-	if (irq_src == 0)
-		goto done;
 
 	/* Clear notification bits */
 	udc_writel(udc, irq_src, USB_STS_REG_OFFSET);
@@ -2302,12 +2317,17 @@ static irqreturn_t tegra_udc_irq(int irq, void *_udc)
 
 	/* Reset Received */
 	if (irq_src & USB_STS_RESET) {
+		USB_INFO("reset\n"); /* PC confirmed */
+		__cancel_delayed_work(&udc->ac_detect_work);
+		udc->ac_detect_count = 0;
+
 		reset_irq(udc);
 		status = IRQ_HANDLED;
 	}
 
 	/* Sleep Enable (Suspend) */
 	if (irq_src & USB_STS_SUSPEND) {
+		USB_INFO("suspend\n");
 		suspend_irq(udc);
 		status = IRQ_HANDLED;
 	}
@@ -2315,7 +2335,6 @@ static irqreturn_t tegra_udc_irq(int irq, void *_udc)
 	if (irq_src & (USB_STS_ERR | USB_STS_SYS_ERR))
 		VDBG("Error IRQ %x", irq_src);
 
-done:
 	spin_unlock_irqrestore(&udc->lock, flags);
 	return status;
 }
@@ -2364,7 +2383,7 @@ static int tegra_udc_start(struct usb_gadget_driver *driver,
 
 
 	/* Enable DR IRQ reg and Set usbcmd reg  Run bit */
-	if (vbus_enabled(udc)) {
+	if (!udc->transceiver) {
 		dr_controller_run(udc);
 		udc->usb_state = USB_STATE_ATTACHED;
 		udc->ep0_state = WAIT_FOR_SETUP;
@@ -2372,12 +2391,12 @@ static int tegra_udc_start(struct usb_gadget_driver *driver,
 		udc->vbus_active = vbus_enabled(udc);
 	}
 
-	printk(KERN_INFO "%s: bind to driver %s\n",
+	USB_INFO("%s: bind to driver %s\n",
 			udc->gadget.name, driver->driver.name);
 
 out:
 	if (retval)
-		printk(KERN_WARNING "gadget driver register failed %d\n",
+		USB_WARNING("gadget driver register failed %d\n",
 								retval);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
@@ -2423,7 +2442,7 @@ static int tegra_udc_stop(struct usb_gadget_driver *driver)
 	udc->gadget.dev.driver = NULL;
 	udc->driver = NULL;
 
-	printk(KERN_WARNING "unregistered gadget driver '%s'\n",
+	USB_WARNING("unregistered gadget driver '%s'\n",
 	       driver->driver.name);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
@@ -2437,6 +2456,7 @@ static int tegra_udc_setup_qh(struct tegra_udc *udc)
 {
 	u32 dccparams;
 	size_t size;
+	struct resource *res;
 
 	/* Read Device Controller Capability Parameters register */
 	dccparams = udc_readl(udc, DCCPARAMS_REG_OFFSET);
@@ -2458,14 +2478,22 @@ static int tegra_udc_setup_qh(struct tegra_udc *udc)
 	/* Setup hardware queue heads */
 	size = udc->max_ep * sizeof(struct ep_queue_head);
 	udc->ep_qh = (struct ep_queue_head *)((u8 *)(udc->regs) + QH_OFFSET);
-	udc->ep_qh_dma = platform_get_resource(udc->pdev, IORESOURCE_MEM
-				, 0)->start + QH_OFFSET;
+	res = platform_get_resource(udc->pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		ERR("failed to get udc platform resource mem\n");
+		return -ENXIO;
+	}
+	udc->ep_qh_dma = res->start + QH_OFFSET;
 	udc->ep_qh_size = size;
 
 	/* Initialize ep0 status request structure */
 	/* FIXME: tegra_alloc_request() ignores ep argument */
 	udc->status_req = container_of(tegra_alloc_request(NULL, GFP_KERNEL),
 			struct tegra_req, req);
+	if (udc->status_req == NULL) {
+		ERR("udc->status_req is null\n");
+		return -1;
+	}
 	/* Allocate a small amount of memory to get valid address */
 	udc->status_req->req.buf = dma_alloc_coherent(&udc->pdev->dev,
 				STATUS_BUFFER_SIZE, &udc->status_req->req.dma,
@@ -2695,6 +2723,8 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 					PM_QOS_DEFAULT_VALUE);
 #endif
 
+	usb_prepare(udc);
+
 	/* Create work for controlling clocks to the phy if otg is disabled */
 	INIT_WORK(&udc->irq_work, tegra_udc_irq_work);
 	/* Create a delayed work for detecting the USB charger */
@@ -2727,6 +2757,8 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 	if (!vbus_enabled(udc))
 		tegra_usb_phy_power_off(udc->phy);
 #endif
+
+	INIT_DELAYED_WORK(&disable_charger_hizmode_work, disable_charger_hizmode);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
 	return 0;
@@ -2852,6 +2884,12 @@ static int tegra_udc_resume(struct platform_device *pdev)
 	return 0;
 }
 
+void tegra_udc_set_phy_clk(bool pull_up)
+{
+	struct tegra_udc *udc = the_udc;
+	tegra_usb_set_usb_clk(udc->phy, pull_up);
+}
+
 
 static struct platform_driver tegra_udc_driver = {
 	.remove  = __exit_p(tegra_udc_remove),
@@ -2865,14 +2903,14 @@ static struct platform_driver tegra_udc_driver = {
 
 static int __init udc_init(void)
 {
-	printk(KERN_INFO "%s (%s)\n", driver_desc, DRIVER_VERSION);
+	USB_INFO("%s (%s)\n", driver_desc, DRIVER_VERSION);
 	return platform_driver_probe(&tegra_udc_driver, tegra_udc_probe);
 }
 module_init(udc_init);
 static void __exit udc_exit(void)
 {
 	platform_driver_unregister(&tegra_udc_driver);
-	printk(KERN_WARNING "%s unregistered\n", driver_desc);
+	USB_WARNING("%s unregistered\n", driver_desc);
 }
 module_exit(udc_exit);
 

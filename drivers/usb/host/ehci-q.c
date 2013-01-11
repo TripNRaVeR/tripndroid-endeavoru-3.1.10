@@ -40,6 +40,11 @@
 
 /*-------------------------------------------------------------------------*/
 
+#include <asm/mach-types.h>
+#include <mach/board_htc.h>
+#include <linux/platform_device.h>
+extern struct ehci_hcd 	*mdm_hsic_ehci_hcd;
+
 /* fill a qtd, returning how much of the buffer we were able to queue up */
 
 static int
@@ -218,6 +223,7 @@ static int qtd_copy_status (
 			status = -EOVERFLOW;
 		/* CERR nonzero + halt --> stall */
 		} else if (QTD_CERR(token)) {
+			pr_info("%s token=%d\n",__func__, token);
 			status = -EPIPE;
 
 		/* In theory, more than one of the following bits can be set
@@ -242,7 +248,7 @@ static int qtd_copy_status (
 			status = -EPROTO;
 		}
 
-		ehci_vdbg (ehci,
+		ehci_dbg (ehci,
 			"dev%d ep%d%s qtd token %08x --> status %d\n",
 			usb_pipedevice (urb->pipe),
 			usb_pipeendpoint (urb->pipe),
@@ -316,6 +322,7 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 	unsigned		count = 0;
 	u8			state;
 	struct ehci_qh_hw	*hw = qh->hw;
+	struct usb_hcd 		*hcd = ehci_to_hcd(ehci);
 
 	if (unlikely (list_empty (&qh->qtd_list)))
 		return count;
@@ -334,7 +341,9 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 	qh->qh_state = QH_STATE_COMPLETING;
 	stopped = (state == QH_STATE_IDLE);
 
-	ehci_sync_qh(ehci, qh);
+	dma_sync_single_for_cpu(hcd->self.controller, qh->qh_dma,
+		sizeof(struct ehci_qh_hw), DMA_FROM_DEVICE);
+
  rescan:
 	last = NULL;
 	last_status = -EINPROGRESS;
@@ -368,7 +377,9 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 		if (qtd == end)
 			break;
 
-		ehci_sync_qtd(ehci, qtd);
+		dma_sync_single_for_cpu(hcd->self.controller, qtd->qtd_dma,
+			sizeof(struct ehci_qtd), DMA_FROM_DEVICE);
+
 		/* hardware copies qtd out of qh overlay */
 		rmb ();
 		token = hc32_to_cpu(ehci, qtd->hw_token);
@@ -487,9 +498,14 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 				 * buffer in this case.  Strictly speaking this
 				 * is a violation of the spec.
 				 */
-				if (last_status != -EPIPE)
+				if (last_status != -EPIPE) {
 					ehci_clear_tt_buffer(ehci, qh, urb,
 							token);
+				}
+				else {
+					pr_info("%s last_status=%d\n",__func__, last_status);
+
+				}
 			}
 		}
 
@@ -563,7 +579,6 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 		/* otherwise, unlink already started */
 		}
 	}
-
 	return count;
 }
 
@@ -757,6 +772,7 @@ qh_urb_transaction (
 	/* by default, enable interrupt on urb completion */
 	if (likely (!(urb->transfer_flags & URB_NO_INTERRUPT)))
 		qtd->hw_token |= cpu_to_hc32(ehci, QTD_IOC);
+
 	return head;
 
 cleanup:
@@ -1106,6 +1122,7 @@ static struct ehci_qh *qh_append_tds (
 			urb->hcpriv = qh_get (qh);
 		}
 	}
+
 	return qh;
 }
 

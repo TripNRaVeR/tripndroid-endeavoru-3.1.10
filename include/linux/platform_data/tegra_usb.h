@@ -61,7 +61,17 @@ struct tegra_ulpi_config {
 	u8 stpdirnxt_trimmer;
 	u8 dir_trimmer;
 	const char *clk;
-	int phy_restore_gpio;
+};
+
+/**
+ * configuration structure for setting up hsic phy
+ */
+struct tegra_hsic_config {
+	u8 sync_start_delay;
+	u8 idle_wait_delay;
+	u8 term_range_adj;
+	u8 elastic_underrun_limit;
+	u8 elastic_overrun_limit;
 };
 
 /**
@@ -71,6 +81,8 @@ struct tegra_ulpi_config {
 struct tegra_usb_phy_platform_ops {
 	void (*open)(void);
 	void (*init)(void);
+	void (*suspend)(void);
+	void (*resume)(void);
 	void (*pre_suspend)(void);
 	void (*post_suspend)(void);
 	void (*pre_resume)(void);
@@ -122,6 +134,7 @@ struct tegra_usb_platform_data {
 	union {
 		struct tegra_utmi_config utmi;
 		struct tegra_ulpi_config ulpi;
+		struct tegra_hsic_config hsic;
 	} u_cfg;
 
 	struct tegra_usb_phy_platform_ops *ops;

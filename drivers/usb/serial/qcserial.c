@@ -17,6 +17,9 @@
 #include <linux/usb/serial.h>
 #include <linux/slab.h>
 #include "usb-wwan.h"
+//++Mars_Lin@20120529: Add DUN interface for serial USB
+#include <mach/board_htc.h>
+//--Mars_Lin@20120529
 
 #define DRIVER_AUTHOR "Qualcomm Inc"
 #define DRIVER_DESC "Qualcomm USB Serial driver"
@@ -86,9 +89,24 @@ static const struct usb_device_id id_table[] = {
 	{USB_DEVICE(0x05c6, 0x9204)},	/* Gobi 2000 QDL device */
 	{USB_DEVICE(0x05c6, 0x9205)},	/* Gobi 2000 Modem device */
 	{USB_DEVICE(0x1199, 0x9013)},	/* Sierra Wireless Gobi 3000 Modem device (MC8355) */
+        {USB_DEVICE(0x05c6, 0x9048)},
 	{ }				/* Terminating entry */
 };
 MODULE_DEVICE_TABLE(usb, id_table);
+
+#define EFS_SYNC_IFC_NUM	2
+//++Mars_Lin@20120529:Add DUN interface for serial USB
+#define DUN_IFC_NUM 3
+static bool usb_diag_enable = false;
+//--Mars_Lin@20120529
+
+//+Sophia:0314
+int usb_serial_reset_resume(struct usb_interface *intf)
+{
+	pr_info("%s intf %p\n", __func__, intf);
+	return usb_serial_resume(intf);
+}
+//+Sophia:0314
 
 static struct usb_driver qcdriver = {
 	.name			= "qcserial",
@@ -97,6 +115,7 @@ static struct usb_driver qcdriver = {
 	.id_table		= id_table,
 	.suspend		= usb_serial_suspend,
 	.resume			= usb_serial_resume,
+	.reset_resume = usb_serial_reset_resume,
 	.supports_autosuspend	= true,
 };
 
@@ -122,7 +141,12 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 
 	spin_lock_init(&data->susp_lock);
 
-	usb_enable_autosuspend(serial->dev);
+	//HTC- 0614- during 1st enumeration, disable auto-suspend
+ if (nintf == 1)  {
+	pr_info("%s: disable auto-suspend\n", __func__);
+	usb_disable_autosuspend(serial->dev);
+ }
+
 
 	switch (nintf) {
 	case 1:
@@ -201,6 +225,17 @@ static int qcprobe(struct usb_serial *serial, const struct usb_device_id *id)
 		}
 		break;
 
+	case 9:
+//++Mars_Lin@20120529:Add DUN interface for serial USB
+		//if (ifnum != EFS_SYNC_IFC_NUM) {
+		if (ifnum != EFS_SYNC_IFC_NUM && !(!usb_diag_enable && ifnum == DUN_IFC_NUM)) {
+//--Mars_Lin@20120529:Add DUN interface for serial USB
+			kfree(data);
+			break;
+		}
+
+		retval = 0;
+		break;
 	default:
 		dev_err(&serial->dev->dev,
 			"unknown number of interfaces: %d\n", nintf);
@@ -253,6 +288,12 @@ static struct usb_serial_driver qcdevice = {
 static int __init qcinit(void)
 {
 	int retval;
+
+//++Mars_Lin@20120529:Add DUN interface for serial USB
+	if (get_radio_flag() & 0x20000) {
+		usb_diag_enable = true;
+	}
+//--Mars_Lin@20120529
 
 	retval = usb_serial_register(&qcdevice);
 	if (retval)

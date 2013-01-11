@@ -27,12 +27,27 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 
+#include <mach/board_htc.h>
+
+#define ADB_IOCTL_MAGIC 's'
+#define ADB_ERR_PAYLOAD_STUCK       _IOW(ADB_IOCTL_MAGIC, 0, unsigned)
+#define ADB_ATS_ENABLE       	    _IOR(ADB_IOCTL_MAGIC, 1, unsigned)
+
 #define ADB_BULK_BUFFER_SIZE           4096
 
 /* number of tx requests to allocate */
 #define TX_REQ_MAX 4
 
+#define PM_QOS_CPU_USB_FREQ_MAX_DEFAULT_VALUE 1500000
+#define PM_QOS_MAX_ONLINE_CPUS_USB_TWO_VALUE 2
+
 static const char adb_shortname[] = "android_adb";
+
+static struct pm_qos_request_list adb_req_freq;
+static struct pm_qos_request_list adb_req_cpus;
+
+static int adb_release_screen_off_flag;
+static struct work_struct adb_perf_lock_on_work;
 
 struct adb_dev {
 	struct usb_function function;
@@ -42,8 +57,8 @@ struct adb_dev {
 	struct usb_ep *ep_in;
 	struct usb_ep *ep_out;
 
-	int online;
-	int error;
+	atomic_t online;
+	atomic_t error;
 
 	atomic_t read_excl;
 	atomic_t write_excl;
@@ -55,6 +70,10 @@ struct adb_dev {
 	wait_queue_head_t write_wq;
 	struct usb_request *rx_req;
 	int rx_done;
+	bool adb_perf_lock_on;
+
+	struct timer_list perf_timer;
+	unsigned long timer_expired;
 };
 
 static struct usb_interface_descriptor adb_interface_desc = {
@@ -114,6 +133,42 @@ static struct usb_descriptor_header *hs_adb_descs[] = {
 
 /* temporary variable used between adb_open() and adb_gadget_bind() */
 static struct adb_dev *_adb_dev;
+
+#define ADB_TRANSFER_EXPIRED	(jiffies + msecs_to_jiffies(10000))
+void tegra_udc_set_phy_clk(bool pull_up);
+static void adb_setup_perflock(struct work_struct *data)
+{
+	struct adb_dev *dev = _adb_dev;
+
+	/* reset the timer */
+	del_timer(&dev->perf_timer);
+	if (dev->adb_perf_lock_on) {
+		printk(KERN_INFO "[USB][ADB] %s, perf on\n", __func__);
+		if (adb_release_screen_off_flag) {
+			tegra_udc_set_phy_clk(true);
+			adb_release_screen_off_flag = 0;
+		}
+		pm_qos_update_request(&adb_req_freq, (s32)PM_QOS_CPU_USB_FREQ_MAX_DEFAULT_VALUE);
+		pm_qos_update_request(&adb_req_cpus, (s32)PM_QOS_MAX_ONLINE_CPUS_USB_TWO_VALUE);
+
+	} else {
+		printk(KERN_INFO "[USB][ADB] %s, perf off\n", __func__);
+		pm_qos_update_request(&adb_req_freq, (s32)PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+		pm_qos_update_request(&adb_req_cpus, (s32)PM_QOS_MIN_ONLINE_CPUS_DEFAULT_VALUE);
+		if (!adb_release_screen_off_flag) {
+			adb_release_screen_off_flag = 1;
+			tegra_udc_set_phy_clk(false);
+		}
+	}
+}
+
+static void adb_perf_lock_disable(unsigned long data)
+{
+	struct adb_dev *dev = _adb_dev;
+	dev->adb_perf_lock_on = false;
+	schedule_work(&adb_perf_lock_on_work);
+}
+
 
 static inline struct adb_dev *func_to_adb(struct usb_function *f)
 {
@@ -196,9 +251,10 @@ static void adb_complete_in(struct usb_ep *ep, struct usb_request *req)
 {
 	struct adb_dev *dev = _adb_dev;
 
-	if (req->status != 0)
-		dev->error = 1;
-
+	if (req->status != 0) {
+		printk(KERN_INFO "[USB] %s: %d\n", __func__, req->status);
+		atomic_set(&dev->error, 1);
+	}
 	adb_req_put(dev, &dev->tx_idle, req);
 
 	wake_up(&dev->write_wq);
@@ -209,9 +265,10 @@ static void adb_complete_out(struct usb_ep *ep, struct usb_request *req)
 	struct adb_dev *dev = _adb_dev;
 
 	dev->rx_done = 1;
-	if (req->status != 0)
-		dev->error = 1;
-
+	if (req->status != 0) {
+		printk(KERN_INFO "[USB] %s: %d\n", __func__, req->status);
+		atomic_set(&dev->error, 1);
+	}
 	wake_up(&dev->read_wq);
 }
 
@@ -262,7 +319,7 @@ static int adb_create_bulk_endpoints(struct adb_dev *dev,
 	return 0;
 
 fail:
-	printk(KERN_ERR "adb_bind() could not allocate requests\n");
+	printk(KERN_ERR "[USB] adb_bind() could not allocate requests\n");
 	return -1;
 }
 
@@ -280,21 +337,30 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 
 	if (count > ADB_BULK_BUFFER_SIZE)
 		return -EINVAL;
+	else if (count == ADB_BULK_BUFFER_SIZE) {
+		if (!dev->adb_perf_lock_on) {
+			dev->adb_perf_lock_on = true;
+			schedule_work(&adb_perf_lock_on_work);
+		}
+		else
+			mod_timer(&dev->perf_timer, ADB_TRANSFER_EXPIRED);
+	}
 
 	if (adb_lock(&dev->read_excl))
 		return -EBUSY;
 
 	/* we will block until we're online */
-	while (!(dev->online || dev->error)) {
+	while (!(atomic_read(&dev->online) || atomic_read(&dev->error))) {
 		pr_debug("adb_read: waiting for online state\n");
 		ret = wait_event_interruptible(dev->read_wq,
-				(dev->online || dev->error));
+			(atomic_read(&dev->online) ||
+			atomic_read(&dev->error)));
 		if (ret < 0) {
 			adb_unlock(&dev->read_excl);
 			return ret;
 		}
 	}
-	if (dev->error) {
+	if (atomic_read(&dev->error)) {
 		r = -EIO;
 		goto done;
 	}
@@ -308,7 +374,7 @@ requeue_req:
 	if (ret < 0) {
 		pr_debug("adb_read: failed to queue req %p (%d)\n", req, ret);
 		r = -EIO;
-		dev->error = 1;
+		atomic_set(&dev->error, 1);
 		goto done;
 	} else {
 		pr_debug("rx %p queue\n", req);
@@ -317,12 +383,12 @@ requeue_req:
 	/* wait for a request to complete */
 	ret = wait_event_interruptible(dev->read_wq, dev->rx_done);
 	if (ret < 0) {
-		dev->error = 1;
+		atomic_set(&dev->error, 1);
 		r = ret;
 		usb_ep_dequeue(dev->ep_out, req);
 		goto done;
 	}
-	if (!dev->error) {
+	if (!atomic_read(&dev->error)) {
 		/* If we got a 0-len packet, throw it back and try again. */
 		if (req->actual == 0)
 			goto requeue_req;
@@ -356,8 +422,16 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 	if (adb_lock(&dev->write_excl))
 		return -EBUSY;
 
+	if (count >= ADB_BULK_BUFFER_SIZE) {
+		if (!dev->adb_perf_lock_on) {
+			dev->adb_perf_lock_on = true;
+			schedule_work(&adb_perf_lock_on_work);
+		} else
+			mod_timer(&dev->perf_timer, ADB_TRANSFER_EXPIRED);
+	}
+
 	while (count > 0) {
-		if (dev->error) {
+		if (atomic_read(&dev->error)) {
 			pr_debug("adb_write dev->error\n");
 			r = -EIO;
 			break;
@@ -366,7 +440,8 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 		/* get an idle tx request to use */
 		req = 0;
 		ret = wait_event_interruptible(dev->write_wq,
-			(req = adb_req_get(dev, &dev->tx_idle)) || dev->error);
+			((req = adb_req_get(dev, &dev->tx_idle)) ||
+			 atomic_read(&dev->error)));
 
 		if (ret < 0) {
 			r = ret;
@@ -387,7 +462,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			ret = usb_ep_queue(dev->ep_in, req, GFP_ATOMIC);
 			if (ret < 0) {
 				pr_debug("adb_write: xfer error %d\n", ret);
-				dev->error = 1;
+				atomic_set(&dev->error, 1);
 				r = -EIO;
 				break;
 			}
@@ -410,53 +485,34 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 
 static int adb_open(struct inode *ip, struct file *fp)
 {
-	static unsigned long last_print;
-	static unsigned long count = 0;
-
+	printk(KERN_INFO "adb_open: %s(parent:%s): tgid=%d\n",
+			current->comm, current->parent->comm, current->tgid);
 	if (!_adb_dev)
 		return -ENODEV;
 
-	if (++count == 1)
-		last_print = jiffies;
-	else {
-		if (!time_before(jiffies, last_print + HZ/2))
-			count = 0;
-		last_print = jiffies;
-	}
-
 	if (adb_lock(&_adb_dev->open_excl)) {
 		cpu_relax();
+		printk(KERN_INFO "[USB] %s: busy\n", __func__);
 		return -EBUSY;
 	}
-
-	if (count < 5)
-		printk(KERN_INFO "adb_open(%s)\n", current->comm);
-
 
 	fp->private_data = _adb_dev;
 
 	/* clear the error latch */
-	_adb_dev->error = 0;
+	atomic_set(&_adb_dev->error, 0);
 
 	return 0;
 }
 
 static int adb_release(struct inode *ip, struct file *fp)
 {
-	static unsigned long last_print;
-	static unsigned long count = 0;
-
-	if (++count == 1)
-		last_print = jiffies;
-	else {
-		if (!time_before(jiffies, last_print + HZ/2))
-			count = 0;
-		last_print = jiffies;
-	}
-
-	if (count < 5)
-		printk(KERN_INFO "adb_release\n");
+	printk(KERN_INFO "adb_release: %s(parent:%s): tgid=%d\n",
+			current->comm, current->parent->comm, current->tgid);
 	adb_unlock(&_adb_dev->open_excl);
+
+	_adb_dev->adb_perf_lock_on = false;
+	schedule_work(&adb_perf_lock_on_work);
+
 	return 0;
 }
 
@@ -475,7 +531,51 @@ static struct miscdevice adb_device = {
 	.fops = &adb_fops,
 };
 
+int htc_usb_enable_function(char *name, int ebl);
+static int adb_enable_open(struct inode *ip, struct file *fp)
+{
+	printk(KERN_INFO "[USB] %s: %s(parent:%s): tgid=%d\n",
+			__func__, current->comm, current->parent->comm, current->tgid);
+	htc_usb_enable_function("adb", 1);
+	return 0;
+}
 
+static int adb_enable_release(struct inode *ip, struct file *fp)
+{
+	printk(KERN_INFO "[USB] %s: %s(parent:%s): tgid=%d\n",
+			__func__, current->comm, current->parent->comm, current->tgid);
+	htc_usb_enable_function("adb", 0);
+	return 0;
+}
+
+static long adb_enable_ioctl(struct file *file,
+				unsigned int cmd, unsigned long arg)
+{
+	int rc = 0;
+
+	switch (cmd) {
+	case ADB_ERR_PAYLOAD_STUCK: {
+		printk(KERN_INFO "[USB] adbd read payload stuck (reset ADB)\n");
+		break;
+	}
+	default:
+		rc = -EINVAL;
+	}
+	return rc;
+}
+
+static const struct file_operations adb_enable_fops = {
+	.owner =   THIS_MODULE,
+	.open =    adb_enable_open,
+	.release = adb_enable_release,
+	.unlocked_ioctl	= adb_enable_ioctl,
+};
+
+static struct miscdevice adb_enable_device = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "android_adb_enable",
+	.fops = &adb_enable_fops,
+};
 
 
 static int
@@ -522,8 +622,8 @@ adb_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct usb_request *req;
 
 
-	dev->online = 0;
-	dev->error = 1;
+	atomic_set(&dev->online, 0);
+	atomic_set(&dev->error, 1);
 
 	wake_up(&dev->read_wq);
 
@@ -550,7 +650,7 @@ static int adb_function_set_alt(struct usb_function *f,
 		usb_ep_disable(dev->ep_in);
 		return ret;
 	}
-	dev->online = 1;
+	atomic_set(&dev->online, 1);
 
 	/* readers may be blocked waiting for us to go online */
 	wake_up(&dev->read_wq);
@@ -563,8 +663,8 @@ static void adb_function_disable(struct usb_function *f)
 	struct usb_composite_dev	*cdev = dev->cdev;
 
 	DBG(cdev, "adb_function_disable cdev %p\n", cdev);
-	dev->online = 0;
-	dev->error = 1;
+	atomic_set(&dev->online, 0);
+	atomic_set(&dev->error, 1);
 	usb_ep_disable(dev->ep_in);
 	usb_ep_disable(dev->ep_out);
 
@@ -578,7 +678,7 @@ static int adb_bind_config(struct usb_configuration *c)
 {
 	struct adb_dev *dev = _adb_dev;
 
-	printk(KERN_INFO "adb_bind_config\n");
+	printk(KERN_INFO "[USB] adb_bind_config\n");
 
 	dev->cdev = c->cdev;
 	dev->function.name = "adb";
@@ -614,15 +714,29 @@ static int adb_setup(void)
 
 	_adb_dev = dev;
 
+	adb_release_screen_off_flag = 1;
+
+	INIT_WORK(&adb_perf_lock_on_work, adb_setup_perflock);
+	pm_qos_add_request(&adb_req_freq, PM_QOS_CPU_FREQ_MIN, (s32)PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+	pm_qos_add_request(&adb_req_cpus, PM_QOS_MIN_ONLINE_CPUS, (s32)PM_QOS_MIN_ONLINE_CPUS_DEFAULT_VALUE);
+	setup_timer(&dev->perf_timer, adb_perf_lock_disable, (unsigned long)dev);
+
 	ret = misc_register(&adb_device);
 	if (ret)
 		goto err;
 
+	/* mfgkernel mode need this device node
+	 */
+	if ((board_mfg_mode() != BOARD_MFG_MODE_NORMAL)) {
+		ret = misc_register(&adb_enable_device);
+		if (ret)
+			goto err;
+	}
 	return 0;
 
 err:
 	kfree(dev);
-	printk(KERN_ERR "adb gadget driver failed to initialize\n");
+	printk(KERN_ERR "[USB] adb gadget driver failed to initialize\n");
 	return ret;
 }
 

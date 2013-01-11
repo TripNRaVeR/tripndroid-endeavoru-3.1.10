@@ -34,6 +34,10 @@
 #include <mach/iomap.h>
 #include "fuse.h"
 
+#include "pm-irq.h"
+
+#define MODULE_NAME "[USBPHY] "
+
 #define ERR(stuff...)		pr_err("usb_phy: " stuff)
 #define WARNING(stuff...)	pr_warning("usb_phy: " stuff)
 #define INFO(stuff...)		pr_info("usb_phy: " stuff)
@@ -44,10 +48,16 @@
 #define AHB_MEM_PREFETCH_CFG2		0xf0
 #define PREFETCH_ENB			(1 << 31)
 
+#define DEBUG
 #ifdef DEBUG
 #define DBG(stuff...)		pr_info("usb_phy: " stuff)
 #else
 #define DBG(stuff...)		do {} while (0)
+#endif
+
+#ifdef CONFIG_CABLE_DETECT_ACCESSORY
+extern void cable_detection_queue_vbus_work(int);
+#define DOCK_VBUS_DEBOUNCE 0.5*HZ
 #endif
 
 static void print_usb_plat_data_info(struct tegra_usb_phy *phy)
@@ -116,7 +126,7 @@ int usb_phy_reg_status_wait(void __iomem *reg, u32 mask,
 	return -1;
 }
 
-static int tegra_usb_phy_init_ops(struct tegra_usb_phy *phy)
+int tegra_usb_phy_init_ops(struct tegra_usb_phy *phy)
 {
 	int err = 0;
 
@@ -129,6 +139,7 @@ static int tegra_usb_phy_init_ops(struct tegra_usb_phy *phy)
 
 	return err;
 }
+
 
 static irqreturn_t usb_phy_dev_vbus_pmu_irq_thr(int irq, void *pdata)
 {
@@ -149,7 +160,9 @@ static irqreturn_t usb_phy_dev_vbus_pmu_irq_thr(int irq, void *pdata)
 		clk_enable(phy->ctrlr_clk);
 		phy->ctrl_clk_on = true;
 	}
-
+#ifdef CONFIG_CABLE_DETECT_ACCESSORY
+	cable_detection_queue_vbus_work(DOCK_VBUS_DEBOUNCE);
+#endif
 	return IRQ_HANDLED;
 }
 
@@ -196,7 +209,10 @@ static int tegra_usb_phy_get_clocks(struct tegra_usb_phy *phy)
 		err = PTR_ERR(phy->sys_clk);
 		goto fail_sclk;
 	}
-	clk_set_rate(phy->sys_clk, 80000000);
+	if (phy->pdata->phy_intf == TEGRA_USB_PHY_INTF_UTMI)
+		clk_set_rate(phy->sys_clk, 81600000);
+	else
+		clk_set_rate(phy->sys_clk, 80000000);
 
 	phy->emc_clk = clk_get(&phy->pdev->dev, "emc");
 	if (IS_ERR(phy->emc_clk)) {
@@ -209,6 +225,9 @@ static int tegra_usb_phy_get_clocks(struct tegra_usb_phy *phy)
 		clk_set_rate(phy->emc_clk, 100000000);
 	else
 		clk_set_rate(phy->emc_clk, 300000000);
+
+	if (phy->pdata->phy_intf == TEGRA_USB_PHY_INTF_UTMI)
+		clk_set_rate(phy->emc_clk, 266500000);
 
 	return err;
 
@@ -284,6 +303,8 @@ struct tegra_usb_phy *tegra_usb_phy_open(struct platform_device *pdev)
 		ERR("inst:[%d] couldn't get regulator avdd_usb: %ld\n",
 			phy->inst, PTR_ERR(phy->vdd_reg));
 		phy->vdd_reg = NULL;
+		err = PTR_ERR(phy->vdd_reg);
+		goto fail_io;
 	}
 
 	err = tegra_usb_phy_get_clocks(phy);
@@ -315,7 +336,6 @@ struct tegra_usb_phy *tegra_usb_phy_open(struct platform_device *pdev)
 				 instance : %d\n", PTR_ERR(phy->vbus_reg),
 								phy->inst);
 				err = PTR_ERR(phy->vbus_reg);
-				phy->vbus_reg = NULL;
 				goto fail_init;
 			}
 		} else {
@@ -326,6 +346,8 @@ struct tegra_usb_phy *tegra_usb_phy_open(struct platform_device *pdev)
 						 req failed\n", phy->inst);
 					goto fail_init;
 				}
+				if (gpio < TEGRA_NR_GPIOS)
+					tegra_gpio_enable(gpio);
 				if (gpio_direction_output(gpio, 1) < 0) {
 					ERR("inst:[%d] host vbus gpio \
 						 dir failed\n", phy->inst);
@@ -387,12 +409,21 @@ fail_inval:
 	return ERR_PTR(err);
 }
 
+
+
 void tegra_usb_phy_close(struct tegra_usb_phy *phy)
 {
 	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
 
-	if (phy->ops && phy->ops->close)
-		phy->ops->close(phy);
+	/* XXX
+	 * not sure why auto init ops here, workaround for inst0 first
+	 */
+	if (phy->inst != 0) {
+		if (phy->ops && phy->ops->close)
+		{
+			phy->ops->close(phy);
+		}
+	}
 
 	if (phy->pdata->ops && phy->pdata->ops->close)
 		phy->pdata->ops->close();
@@ -417,8 +448,6 @@ void tegra_usb_phy_close(struct tegra_usb_phy *phy)
 	}
 
 	if (phy->vdd_reg) {
-		if (phy->vdd_reg_on)
-			regulator_disable(phy->vdd_reg);
 		regulator_put(phy->vdd_reg);
 	}
 
@@ -437,7 +466,6 @@ irqreturn_t tegra_usb_phy_irq(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_init(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -557,7 +585,6 @@ int tegra_usb_phy_reset(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_pre_suspend(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -572,12 +599,14 @@ int tegra_usb_phy_pre_suspend(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_suspend(struct tegra_usb_phy *phy)
 {
 	int err = 0;
 
 	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
+
+	if (phy->pdata->ops && phy->pdata->ops->suspend)
+		phy->pdata->ops->suspend();
 
 	if (phy->ops && phy->ops->suspend)
 		err = phy->ops->suspend(phy);
@@ -588,7 +617,6 @@ int tegra_usb_phy_suspend(struct tegra_usb_phy *phy)
 
 	return err;
 }
-
 int tegra_usb_phy_post_suspend(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -603,7 +631,6 @@ int tegra_usb_phy_post_suspend(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_pre_resume(struct tegra_usb_phy *phy, bool remote_wakeup)
 {
 	int status = 0;
@@ -618,7 +645,6 @@ int tegra_usb_phy_pre_resume(struct tegra_usb_phy *phy, bool remote_wakeup)
 
 	return status;
 }
-
 int tegra_usb_phy_resume(struct tegra_usb_phy *phy)
 {
 	int err = 0;
@@ -632,10 +658,12 @@ int tegra_usb_phy_resume(struct tegra_usb_phy *phy)
 	if (!err && phy->ops && phy->ops->resume)
 		err = phy->ops->resume(phy);
 
+	if (phy->pdata->ops && phy->pdata->ops->resume)
+		phy->pdata->ops->resume();
+
 	return err;
 
 }
-
 int tegra_usb_phy_post_resume(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -650,7 +678,6 @@ int tegra_usb_phy_post_resume(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_port_power(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -662,7 +689,6 @@ int tegra_usb_phy_port_power(struct tegra_usb_phy *phy)
 
 	return status;
 }
-
 int tegra_usb_phy_bus_reset(struct tegra_usb_phy *phy)
 {
 	int status = 0;
@@ -737,5 +763,34 @@ void tegra_usb_phy_memory_prefetch_off(struct tegra_usb_phy *phy)
 		val = readl(ahb_gizmo + AHB_MEM_PREFETCH_CFG2);
 		val &= ~(PREFETCH_ENB);
 		writel(val, ahb_gizmo + AHB_MEM_PREFETCH_CFG2);
+	}
+}
+
+int tegra_usb_set_vbus_wakeup(int irq)
+{
+	int err = 0;
+	err = tegra_pm_irq_set_wake(irq, true);
+	if(err!=0){
+		pr_err(MODULE_NAME "%s set wake error:%d\n", __func__,err);
+		return err;
+	}
+	err = tegra_pm_irq_set_wake_type(irq, IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING);
+	if(err!=0){
+		pr_err(MODULE_NAME "%s set wake_type error:%d\n", __func__,err);
+	}
+	return err;
+
+}
+void tegra_usb_set_usb_clk(struct tegra_usb_phy *phy, bool pull_up)
+{
+	if (!phy)
+		return;
+	pr_info("%s pull_up:%d\n", __func__, pull_up);
+	if (pull_up) {
+		clk_set_rate(phy->sys_clk, 266000000);
+		clk_set_rate(phy->emc_clk, 533000000);
+	} else {
+		clk_set_rate(phy->sys_clk, 81600000);
+		clk_set_rate(phy->emc_clk, 266500000);
 	}
 }
