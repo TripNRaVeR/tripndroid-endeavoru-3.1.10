@@ -211,6 +211,7 @@ obj-${CONFIG_MACH_ENDEAVORU}		+= tegra_flashlight.o
 obj-${CONFIG_MACH_ENDEAVORU}		+= devices_htc.o
 obj-${CONFIG_MACH_ENDEAVORU}		+= htc_audio_power.o
 obj-${CONFIG_MACH_ENDEAVORU}		+= htc_simhotswap.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= nand_partitions.o
 
 obj-${CONFIG_MACH_KAI}                  += board-kai.o
 obj-${CONFIG_MACH_KAI}                  += board-kai-kbc.o
