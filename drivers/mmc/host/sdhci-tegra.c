@@ -859,6 +859,10 @@ static int tegra_sdhci_suspend(struct sdhci_host *sdhci, pm_message_t state)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(sdhci);
 	struct tegra_sdhci_host *tegra_host = pltfm_host->priv;
+	struct platform_device *pdev = to_platform_device(mmc_dev(sdhci->mmc));
+	struct tegra_sdhci_platform_data *plat;
+
+	plat = pdev->dev.platform_data;
 
 	tegra_sdhci_set_clock(sdhci, 0);
 
@@ -879,6 +883,9 @@ static int tegra_sdhci_suspend(struct sdhci_host *sdhci, pm_message_t state)
 		mutex_unlock(&tegra_host->dpd->delay_lock);
 	}
 
+	if (plat->suspend_gpiocfg)
+		plat->suspend_gpiocfg();
+
 	return 0;
 }
 
@@ -886,6 +893,13 @@ static int tegra_sdhci_resume(struct sdhci_host *sdhci)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(sdhci);
 	struct tegra_sdhci_host *tegra_host = pltfm_host->priv;
+	struct platform_device *pdev = to_platform_device(mmc_dev(sdhci->mmc));
+	struct tegra_sdhci_platform_data *plat;
+
+	plat = pdev->dev.platform_data;
+
+	if (plat->resume_gpiocfg)
+		plat->resume_gpiocfg();
 
 	/* Enable the power rails if any */
 	if (tegra_host->card_present) {
@@ -1140,7 +1154,11 @@ static int __devinit sdhci_tegra_probe(struct platform_device *pdev)
 #ifdef CONFIG_MMC_BKOPS
 	host->mmc->caps |= MMC_CAP_BKOPS;
 #endif
-
+#ifdef CONFIG_MMC_EMBEDDED_SDIO
+	/* Do not turn OFF embedded sdio cards */
+	if (plat->mmc_data.embedded_sdio)
+		host->mmc->pm_flags |= MMC_PM_KEEP_POWER;
+#endif
 	tegra_sdhost_min_freq = TEGRA_SDHOST_MIN_FREQ;
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 	tegra_host->hw_ops = &tegra_2x_sdhci_ops;
