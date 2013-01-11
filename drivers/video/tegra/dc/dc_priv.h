@@ -166,6 +166,7 @@ struct tegra_dc {
 	struct delayed_work		one_shot_work;
 
 	bool				isyuv_lasttime;
+	u32				suspend_status;
 };
 
 #define print_mode_info(dc, mode) do {					\
