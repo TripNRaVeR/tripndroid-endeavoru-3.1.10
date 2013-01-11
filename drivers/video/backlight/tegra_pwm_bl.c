@@ -20,8 +20,64 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/tegra_pwm_bl.h>
-#include <linux/gpio.h>
+#include <linux/delay.h>
+
 #include <mach/dc.h>
+#include <mach/panel_id.h>
+#include <mach/board_htc.h>
+
+extern int tegra_dsi_send_panel_short_cmd(struct tegra_dc *dc, u8 *pdata, u8 data_len);
+
+extern struct tegra_dc *tegra_dc_get_dc(unsigned idx);
+extern unsigned long g_panel_id;
+
+static u8 enhance_on[]={0x55,0x83};
+static u8 enhance_off[]={0x55,0x03};
+
+static ssize_t store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct tegra_dc *dc;
+	int value = 1;
+
+	sscanf(buf,"%d\n",&value);
+
+	dc = tegra_dc_get_dc(0);
+
+	switch (PANEL_MASK(g_panel_id)) {
+		case PANEL_ID_SHARP_HX_C3:
+		case PANEL_ID_SHARP_HX_C4:
+		case PANEL_ID_SHARP_HX_C5:
+		case PANEL_ID_SHARP_HX:
+		case PANEL_ID_SHARP_HX_43:
+			enhance_on[0] = 0xE3;
+			enhance_on[1] = 0x01;
+			enhance_off[0] = 0xE3;
+			enhance_off[1] = 0x00;
+			break;
+		default:
+			break;
+	}
+
+	if ( value == 1)
+	{
+		tegra_dsi_send_panel_short_cmd(dc, enhance_on, ARRAY_SIZE(enhance_on));
+		printk("[DISP]enable color enhancement %d\n", value);
+	} else
+	{
+		tegra_dsi_send_panel_short_cmd(dc, enhance_off, ARRAY_SIZE(enhance_off));
+		printk("[DISP]disable color enhancement %d\n", value);
+	}
+	return count;
+}
+static ssize_t show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return 0;
+}
+
+static DEVICE_ATTR(enhance, 0664, show, store);
 
 struct tegra_pwm_bl_data {
 	struct device *dev;
@@ -30,6 +86,7 @@ struct tegra_pwm_bl_data {
 	struct tegra_dc_pwm_params params;
 	int (*check_fb)(struct device *dev, struct fb_info *info);
 };
+static bool bkl_debug = true;
 
 static int tegra_pwm_backlight_update_status(struct backlight_device *bl)
 {
@@ -37,6 +94,10 @@ static int tegra_pwm_backlight_update_status(struct backlight_device *bl)
 	int brightness = bl->props.brightness;
 	int max = bl->props.max_brightness;
 	struct tegra_dc *dc;
+	u8 pdata[]={0x53,0x2C,0x51,0xFF};
+	if (!bl->props.bkl_on) {
+		return 0;
+	}
 
 	if (bl->props.power != FB_BLANK_UNBLANK)
 		brightness = 0;
@@ -52,15 +113,28 @@ static int tegra_pwm_backlight_update_status(struct backlight_device *bl)
 		brightness, max);
 
 #if defined(CONFIG_ARCH_TEGRA_2x_SOC)
-	/* map API brightness range from (0~255) to hw range (0~128) */
 	tbl->params.duty_cycle = (brightness * 128) / 255;
 #else
 	tbl->params.duty_cycle = brightness & 0xFF;
 #endif
-
+	if (brightness == 0) {
+		bkl_debug = true;
+		printk(KERN_INFO "[DISP] %s brightness=%d ,duty_cycle=%d\n",__FUNCTION__,brightness,tbl->params.duty_cycle);
+	}
+	else if (bkl_debug && (brightness > 0)) {
+		bkl_debug = false;
+		printk(KERN_INFO "[DISP] %s brightness=%d ,duty_cycle=%d\n",__FUNCTION__,brightness,tbl->params.duty_cycle);
+	}
+	pdata[3]=tbl->params.duty_cycle;
 	/* Call tegra display controller function to update backlight */
 	dc = tegra_dc_get_dc(tbl->which_dc);
-	if (dc)
+	if (tbl->params.backlight_mode==MIPI_BACKLIGHT){
+		if ((brightness == 0) || !tbl->params.dimming_enable)
+			pdata[1] = 0x24;
+		if (dc)
+			tegra_dsi_send_panel_short_cmd(dc, pdata, ARRAY_SIZE(pdata));
+	}
+	else if (dc)
 		tegra_dc_config_pwm(dc, &tbl->params);
 	else
 		dev_err(&bl->dev, "tegra display controller not available\n");
@@ -113,16 +187,12 @@ static int tegra_pwm_backlight_probe(struct platform_device *pdev)
 	tbl->check_fb = data->check_fb;
 	tbl->params.which_pwm = data->which_pwm;
 	tbl->params.gpio_conf_to_sfio = data->gpio_conf_to_sfio;
+	tbl->params.switch_to_sfio = data->switch_to_sfio;
 	tbl->params.period = data->period;
 	tbl->params.clk_div = data->clk_div;
 	tbl->params.clk_select = data->clk_select;
-
-	/* If backlight pin is sfio, request for it */
-	if (gpio_is_valid(tbl->params.gpio_conf_to_sfio)) {
-		ret = gpio_request(tbl->params.gpio_conf_to_sfio, "disp_bl");
-		if (ret)
-			dev_err(&pdev->dev, "backlight gpio request failed\n");
-	}
+	tbl->params.backlight_mode = data->backlight_mode;
+	tbl->params.dimming_enable = data->dimming_enable;
 
 	memset(&props, 0, sizeof(struct backlight_properties));
 	props.type = BACKLIGHT_RAW;
@@ -135,11 +205,22 @@ static int tegra_pwm_backlight_probe(struct platform_device *pdev)
 		goto err_bl;
 	}
 
+	if (board_mfg_mode() == BOARD_MFG_MODE_FACTORY2)
+		ret = device_create_file(&pdev->dev, &dev_attr_enhance);
+
+	bl->props.bkl_on = 1;
 	bl->props.brightness = data->dft_brightness;
 
-	if (gpio_is_valid(tbl->params.gpio_conf_to_sfio))
-		gpio_free(tbl->params.gpio_conf_to_sfio);
-	backlight_update_status(bl);
+	switch(data->backlight_status) {
+		case BACKLIGHT_SKIP_WHEN_PROBE:
+			break;
+		case BACKLIGHT_DISABLE:
+			bl->props.bkl_on = 0;
+			break;
+		case BACKLIGHT_ENABLE:
+		default:
+			backlight_update_status(bl);
+	}
 
 	platform_set_drvdata(pdev, bl);
 	return 0;
