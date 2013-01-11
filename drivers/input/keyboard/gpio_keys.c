@@ -53,6 +53,8 @@ struct gpio_keys_drvdata {
 	struct gpio_button_data data[0];
 };
 
+extern bool is_resume_from_deep_suspend(void);
+
 /*
  * SYSFS interface for enabling/disabling keys and switches:
  *

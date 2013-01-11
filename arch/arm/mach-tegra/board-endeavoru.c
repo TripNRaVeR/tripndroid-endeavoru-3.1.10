@@ -73,6 +73,7 @@
 #include "pm.h"
 
 #define PMC_WAKE_STATUS 0x14
+extern bool is_resume_from_deep_suspend(void);
 
 static struct balanced_throttle throttle_list[] = {
 	{

@@ -58,6 +58,8 @@
 #define DC_COM_PIN_OUTPUT_POLARITY1_INIT_VAL	0x01000000
 #define DC_COM_PIN_OUTPUT_POLARITY3_INIT_VAL	0x0
 
+extern bool is_resume_from_deep_suspend(void );
+
 static struct fb_videomode tegra_dc_hdmi_fallback_mode = {
 	.refresh = 60,
 	.xres = 640,
