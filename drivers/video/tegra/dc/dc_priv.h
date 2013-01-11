@@ -122,7 +122,8 @@ struct tegra_dc {
 
 	struct mutex			lock;
 	struct mutex			one_shot_lock;
-
+	struct mutex			host_lock;
+	struct mutex			vsync_lock;
 	struct resource			*fb_mem;
 	struct tegra_fb_info		*fb;
 
