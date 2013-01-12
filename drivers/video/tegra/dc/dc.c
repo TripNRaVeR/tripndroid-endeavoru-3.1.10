@@ -1992,6 +1992,12 @@ static int tegra_dc_suspend(struct nvhost_device *ndev, pm_message_t state)
 
 	mutex_lock(&dc->lock);
 
+	if (ndev->id == 0 &&
+		dc->out &&
+		dc->out->performance_tuning &&
+		dc->out->disable)
+		dc->out->disable();
+
 	if (dc->out_ops && dc->out_ops->suspend)
 		dc->out_ops->suspend(dc);
 
