@@ -5139,6 +5139,7 @@ wl_notify_connect_status(struct wl_priv *wl, struct net_device *ndev,
 					 wl_read_prof(wl, ndev, WL_PROF_SSID))->SSID));
 				}
 			}
+
 		} else if (wl_is_linkdown(wl, e)) {
 			if (wl->scan_request) {
 				if (wl->escan_on) {

@@ -113,5 +113,4 @@ int p1852_get_skuid(void);
 #define TOUCH_BUS_ATMEL_T9  0
 #endif
 
-
 #endif

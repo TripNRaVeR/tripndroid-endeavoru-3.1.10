@@ -389,7 +389,6 @@ static bool pcie_mdiosetblock(struct pcicore_info *pi, uint blk)
 	while (i < pcie_serdes_spinwait) {
 		if (R_REG(&pcieregs->mdiocontrol) & MDIOCTL_ACCESS_DONE)
 			break;
-
 		udelay(1000);
 		i++;
 	}

@@ -179,7 +179,6 @@ static inline bool ac_bitmap_tst(u8 bitmap, int prec)
 #define CRYPTO_ALGO_NALG		7
 
 /* wireless security bitvec */
-
 #define WEP_ENABLED		0x0001
 #define TKIP_ENABLED		0x0002
 #define AES_ENABLED		0x0004

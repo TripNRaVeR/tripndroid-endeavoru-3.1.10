@@ -198,6 +198,7 @@ static void __init p1852_uart_init(void)
 	platform_add_devices(p1852_uart_devices,
 				ARRAY_SIZE(p1852_uart_devices));
 }
+
 #if defined(CONFIG_TEGRA_P1852_TDM)
 static struct tegra_p1852_platform_data p1852_audio_tdm_pdata = {
 	.codec_info[0] = {

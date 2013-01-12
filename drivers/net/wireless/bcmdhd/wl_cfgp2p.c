@@ -1433,6 +1433,7 @@ wl_cfgp2p_tx_action_frame(struct wl_priv *wl, struct net_device *dev,
 		wl->ioctl_buf, WLC_IOCTL_MAXLEN, bssidx, &wl->ioctl_buf_sync);
 
 	if (ret < 0) {
+
 		CFGP2P_ERR((" sending action frame is failed\n"));
 		goto exit;
 	}

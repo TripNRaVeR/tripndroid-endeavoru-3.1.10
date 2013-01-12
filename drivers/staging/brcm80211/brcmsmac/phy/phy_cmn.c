@@ -479,6 +479,7 @@ wlc_phy_attach(struct shared_phy *sh, struct d11regs __iomem *regs,
 
 	pi = sh->phy_head;
 	if ((sflags & SISF_DB_PHY) && pi) {
+
 		wlapi_bmac_corereset(pi->sh->physhim, pi->pubpi.coreflags);
 		pi->refcnt++;
 		return &pi->pubpi_ro;
@@ -891,9 +892,11 @@ void wlc_phy_table_data_write(struct brcms_phy *pi, uint width, u32 val)
 	}
 
 	if (width == 32) {
+
 		write_phy_reg(pi, pi->tbl_data_hi, (u16) (val >> 16));
 		write_phy_reg(pi, pi->tbl_data_lo, (u16) val);
 	} else {
+
 		write_phy_reg(pi, pi->tbl_data_lo, (u16) val);
 	}
 }
@@ -924,12 +927,15 @@ wlc_phy_write_table(struct brcms_phy *pi, const struct phytbl_info *ptbl_info,
 		}
 
 		if (tbl_width == 32) {
+
 			write_phy_reg(pi, tblDataHi,
 				      (u16) (ptbl_32b[idx] >> 16));
 			write_phy_reg(pi, tblDataLo, (u16) ptbl_32b[idx]);
 		} else if (tbl_width == 16) {
+
 			write_phy_reg(pi, tblDataLo, ptbl_16b[idx]);
 		} else {
+
 			write_phy_reg(pi, tblDataLo, ptbl_8b[idx]);
 		}
 	}
@@ -960,11 +966,14 @@ wlc_phy_read_table(struct brcms_phy *pi, const struct phytbl_info *ptbl_info,
 		}
 
 		if (tbl_width == 32) {
+
 			ptbl_32b[idx] = read_phy_reg(pi, tblDataLo);
 			ptbl_32b[idx] |= (read_phy_reg(pi, tblDataHi) << 16);
 		} else if (tbl_width == 16) {
+
 			ptbl_16b[idx] = read_phy_reg(pi, tblDataLo);
 		} else {
+
 			ptbl_8b[idx] = (u8) read_phy_reg(pi, tblDataLo);
 		}
 	}
@@ -1149,6 +1158,7 @@ void wlc_phy_switch_radio(struct brcms_phy_pub *pih, bool on)
 
 	if (ISNPHY(pi)) {
 		wlc_phy_switch_radio_nphy(pi, on);
+
 	} else if (ISLCNPHY(pi)) {
 		if (on) {
 			and_phy_reg(pi, 0x44c,
@@ -2381,6 +2391,7 @@ wlc_phy_noise_sample_request(struct brcms_phy_pub *pih, u8 reason, u8 ch)
 		break;
 
 	case PHY_NOISE_SAMPLE_EXTERNAL:
+
 		pi->phynoise_state |= PHY_NOISE_STATE_EXTERNAL;
 		break;
 
@@ -2587,6 +2598,7 @@ int wlc_phy_rssi_compute(struct brcms_phy_pub *pih,
 	}
 
 	if (ISLCNPHY(pi)) {
+
 		if (rssi > 127)
 			rssi -= 256;
 	} else if (radioid == BCM2055_ID || radioid == BCM2056_ID

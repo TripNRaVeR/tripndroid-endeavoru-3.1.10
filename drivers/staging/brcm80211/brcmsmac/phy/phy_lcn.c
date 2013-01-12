@@ -3585,14 +3585,12 @@ wlc_lcnphy_samp_cap(struct brcms_phy *pi, int clip_detect_algo, u16 thresh,
 			ptr[(strptr - 0x7E00) / 4] = real;
 		else
 			ptr[(strptr - 0x7E00) / 4] = imag;
-
 		if (clip_detect_algo) {
 			if (imag > thresh || imag < -thresh) {
 				strptr = 0x8000;
 				ptr[130] = 1;
 			}
 		}
-
 		strptr += 4;
 	}
 
@@ -4694,6 +4692,7 @@ static void wlc_lcnphy_rev2_baseband_init(struct brcms_phy *pi)
 {
 	if (CHSPEC_IS5G(pi->radio_chanspec)) {
 		mod_phy_reg(pi, 0x416, (0xff << 0), 80 << 0);
+
 		mod_phy_reg(pi, 0x416, (0xff << 8), 80 << 8);
 	}
 }
@@ -4956,6 +4955,7 @@ void wlc_phy_txpower_recalc_target_lcnphy(struct brcms_phy *pi)
 	if (wlc_lcnphy_tempsense_based_pwr_ctrl_enabled(pi)) {
 		wlc_lcnphy_calib_modes(pi, LCNPHY_PERICAL_TEMPBASED_TXPWRCTRL);
 	} else if (wlc_lcnphy_tssi_based_pwr_ctrl_enabled(pi)) {
+
 		pwr_ctrl = wlc_lcnphy_get_tx_pwr_ctrl(pi);
 		wlc_lcnphy_set_tx_pwr_ctrl(pi, LCNPHY_TX_PWR_CTRL_OFF);
 		wlc_lcnphy_txpower_recalc_target(pi);

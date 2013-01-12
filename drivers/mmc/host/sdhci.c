@@ -1135,11 +1135,24 @@ out:
 	host->clock = clock;
 }
 
+#ifdef CONFIG_MACH_ENDEAVORU
+static int wifi_is_on = 0;
+extern int enterprise_wifi_power(int on);
+void set_wifi_is_on (int on){
+    wifi_is_on = on;
+}
+EXPORT_SYMBOL(set_wifi_is_on);
+#endif
+
 static void sdhci_set_power(struct sdhci_host *host, unsigned short power)
 {
 	u8 pwr = 0;
 
 	if (power != (unsigned short)-1) {
+#ifdef CONFIG_MACH_ENDEAVORU
+	if(host->mmc->index==1)
+		enterprise_wifi_power(1);
+#endif
 		switch (1 << power) {
 		case MMC_VDD_165_195:
 			pwr = SDHCI_POWER_180;
@@ -1155,6 +1168,12 @@ static void sdhci_set_power(struct sdhci_host *host, unsigned short power)
 		default:
 			BUG();
 		}
+	}
+	else {
+#ifdef CONFIG_MACH_ENDEAVORU
+		if(host->mmc->index==1)
+			enterprise_wifi_power(0);
+#endif
 	}
 
 	if (host->pwr == pwr)
@@ -2399,7 +2418,30 @@ int sdhci_resume_host(struct sdhci_host *host)
 	sdhci_init(host, (host->mmc->pm_flags & MMC_PM_KEEP_POWER));
 	mmiowb();
 
-	if (mmc->card) {
+#ifdef CONFIG_MACH_ENDEAVORU
+	if (mmc->card){
+		if (mmc->card->type != MMC_TYPE_SDIO) {
+			ret = mmc_resume_host(host->mmc);
+		}
+		else {
+			printk("wifi_is_on: %d\n",wifi_is_on);
+
+                 if (host->mmc->index == 1 && wifi_is_on == 1) {
+                     ret = mmc_resume_host(host->mmc);
+                 }
+	         else if (host->mmc->index == 1 && wifi_is_on != 1) {
+			if (host->ops->set_clock)
+				host->ops->set_clock(host, 0);
+			}
+		}
+		/* Enable card interrupt as it is overwritten in sdhci_init */
+		if ((mmc->caps & MMC_CAP_SDIO_IRQ) &&
+			(mmc->pm_flags & MMC_PM_KEEP_POWER))
+				if (host->card_int_set)
+					mmc->ops->enable_sdio_irq(mmc, true);
+	}
+#else
+    if (mmc->card && (mmc->card->type != MMC_TYPE_SDIO)){
 		ret = mmc_resume_host(host->mmc);
 		/* Enable card interrupt as it is overwritten in sdhci_init */
 		if ((mmc->caps & MMC_CAP_SDIO_IRQ) &&
@@ -2407,7 +2449,7 @@ int sdhci_resume_host(struct sdhci_host *host)
 				if (host->card_int_set)
 					mmc->ops->enable_sdio_irq(mmc, true);
 	}
-
+#endif
 	sdhci_enable_card_detection(host);
 
 	/* Set the re-tuning expiration flag */
@@ -2657,6 +2699,15 @@ int sdhci_add_host(struct sdhci_host *host)
 	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) &&
 	    mmc_card_is_removable(mmc) && !(host->ops->get_cd))
 		mmc->caps |= MMC_CAP_NEEDS_POLL;
+#ifdef CONFIG_MACH_ENDEAVORU
+	if(host->mmc->index==1) {
+		mmc->caps |= MMC_CAP_NONREMOVABLE;
+		mmc->caps |= MMC_CAP_DISABLE;
+		mmc->caps |= MMC_CAP_POWER_OFF_CARD;
+		mmc->caps |= MMC_PM_KEEP_POWER;
+        host->flags |= MMC_PM_KEEP_POWER;
+	}
+#endif
 
 	/* UHS-I mode(s) supported by the host controller. */
 	if (host->version >= SDHCI_SPEC_300)

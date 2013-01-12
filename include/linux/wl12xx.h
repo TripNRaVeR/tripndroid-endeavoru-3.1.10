@@ -34,7 +34,6 @@ enum {
 	WL12XX_REFCLOCK_26_XTAL = 5, /* 26 MHz, XTAL */
 };
 
-
 /* TCXO clock values */
 enum {
 	WL12XX_TCXOCLOCK_19_2	= 0, /* 19.2MHz */
@@ -48,7 +47,7 @@ enum {
 };
 
 struct wl12xx_platform_data {
-	int (*set_power)(int power_on);
+	void (*set_power)(bool enable);
 	int (*set_carddetect)(int val);
 	/* SDIO only: IRQ number if WLAN_IRQ line is used, 0 for SDIO IRQs */
 	int irq;
@@ -56,6 +55,9 @@ struct wl12xx_platform_data {
 	int board_ref_clock;
 	int board_tcxo_clock;
 	unsigned long platform_quirks;
+	bool pwr_in_suspend;
+
+	struct wl1271_if_operations *ops;
 };
 
 /* Platform does not support level trigger interrupts */
@@ -75,6 +77,6 @@ int wl12xx_set_platform_data(const struct wl12xx_platform_data *data)
 
 #endif
 
-const struct wl12xx_platform_data *wl12xx_get_platform_data(void);
+struct wl12xx_platform_data *wl12xx_get_platform_data(void);
 
 #endif

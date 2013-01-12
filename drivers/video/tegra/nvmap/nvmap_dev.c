@@ -691,7 +691,7 @@ static void destroy_client(struct nvmap_client *client)
 		dupes = atomic_read(&ref->dupes);
 		while (dupes--)
 			nvmap_handle_put(ref->handle);
-
+ 		NVMAP_MAGIC_FREE(ref);
 		kfree(ref);
 	}
 

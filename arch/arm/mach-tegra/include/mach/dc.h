@@ -150,6 +150,12 @@ struct tegra_dsi_out {
 	bool		panel_has_frame_buffer;	/* required*/
 	bool		panel_send_dc_frames;
 
+	struct tegra_dsi_cmd	*osc_off_cmd;
+	u16		n_osc_off_cmd;
+
+	struct tegra_dsi_cmd	*osc_on_cmd;
+	u16		n_osc_on_cmd;
+
 	struct tegra_dsi_cmd	*dsi_init_cmd;		/* required */
 	u16		n_init_cmd;			/* required */
 
@@ -167,6 +173,7 @@ struct tegra_dsi_out {
 	u8		video_burst_mode;
 
 	u8		suspend_aggr;
+	u8		impedance_para;
 
 	u16		panel_buffer_size_byte;
 	u16		panel_reset_timeout_msec;
@@ -187,6 +194,11 @@ struct tegra_dsi_out {
 	u32		burst_mode_freq_khz;
 
 	struct dsi_phy_timing_ns phy_timing;
+
+	struct tegra_dsi_cmd	*dsi_cabc_moving_mode;
+	struct tegra_dsi_cmd	*dsi_cabc_still_mode;
+
+	u16		n_cabc_cmd;
 };
 
 enum {
@@ -372,6 +384,10 @@ struct tegra_dc_out {
 	bool			user_needs_vblank;
 	struct completion	user_vblank_comp;
 
+	int			power_wakeup;
+	int 			video_min_bw;
+	int			performance_tuning;
+
 	int	(*enable)(void);
 	int	(*postpoweron)(void);
 	int	(*prepoweroff)(void);
@@ -379,6 +395,9 @@ struct tegra_dc_out {
 
 	int	(*hotplug_init)(void);
 	int	(*postsuspend)(void);
+
+	int	(*bridge_reset)(void);
+	int	(*ic_reset)(void);
 };
 
 /* bits for tegra_dc_out.flags */
@@ -544,9 +563,6 @@ void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val);
  */
 int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n);
 int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
-int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable);
-bool tegra_dc_is_within_n_vsync(struct tegra_dc *dc, s64 ts);
-bool tegra_dc_does_vsync_separate(struct tegra_dc *dc, s64 new_ts, s64 old_ts);
 
 int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode);
 struct fb_videomode;
@@ -563,16 +579,21 @@ unsigned tegra_dc_get_out_max_pixclock(const struct tegra_dc *dc);
 
 struct tegra_dc_pwm_params {
 	int which_pwm;
+	void (*switch_to_sfio)(int);
 	int gpio_conf_to_sfio;
 	unsigned int period;
 	unsigned int clk_div;
 	unsigned int clk_select;
 	unsigned int duty_cycle;
+	int backlight_mode;
+	bool dimming_enable;
 };
 
 void tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg);
 
 int tegra_dsi_send_panel_short_cmd(struct tegra_dc *dc, u8 *pdata, u8 data_len);
+
+void tegra_dc_host_trigger(struct tegra_dc *dc);
 
 int tegra_dc_update_csc(struct tegra_dc *dc, int win_index);
 

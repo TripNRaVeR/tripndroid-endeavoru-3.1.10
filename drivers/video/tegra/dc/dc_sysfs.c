@@ -321,7 +321,7 @@ static ssize_t smart_panel_show(struct device *device,
 
 static DEVICE_ATTR(smart_panel, S_IRUGO, smart_panel_show, NULL);
 
-void __devexit tegra_dc_remove_sysfs(struct device *dev)
+void tegra_dc_remove_sysfs(struct device *dev)
 {
 	struct nvhost_device *ndev = to_nvhost_device(dev);
 	struct tegra_dc *dc = nvhost_get_drvdata(ndev);

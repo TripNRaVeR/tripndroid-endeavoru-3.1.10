@@ -62,13 +62,10 @@ endif
 ifneq ($(CONFIG_DHD_USE_SCHED_SCAN),)
 DHDCFLAGS += -DWL_SCHED_SCAN
 endif
-
 ifneq ($(CONFIG_DHD_ENABLE_P2P),)
 DHDCFLAGS += -DWL_ENABLE_P2P_IF
 endif
-
 EXTRA_CFLAGS = $(DHDCFLAGS)
-
 ifeq ($(CONFIG_BCMDHD),m)
 EXTRA_LDFLAGS += --strip-debug
 endif

@@ -31,6 +31,9 @@ enum {
 static int debug_mask = DEBUG_USER_STATE;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
+extern struct wake_lock power_key_wake_lock;
+extern struct wake_lock udc_resume_wake_lock;
+
 static DEFINE_MUTEX(early_suspend_lock);
 static LIST_HEAD(early_suspend_handlers);
 static void early_suspend(struct work_struct *work);
@@ -175,6 +178,10 @@ void request_suspend_state(suspend_state_t new_state)
 	} else if (old_sleep && new_state == PM_SUSPEND_ON) {
 		state &= ~SUSPEND_REQUESTED;
 		wake_lock(&main_wake_lock);
+		if (wake_lock_active(&power_key_wake_lock))
+			wake_unlock(&power_key_wake_lock);
+		if (wake_lock_active(&udc_resume_wake_lock))
+			wake_unlock(&udc_resume_wake_lock);
 		queue_work(suspend_work_queue, &late_resume_work);
 	}
 	requested_suspend_state = new_state;

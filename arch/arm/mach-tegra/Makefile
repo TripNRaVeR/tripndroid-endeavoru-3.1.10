@@ -1,7 +1,5 @@
 GCOV_PROFILE := y
 
-subdir-ccflags-y := -Werror
-
 obj-y                                   += ahb.o
 obj-y                                   += apbio.o
 obj-y                                   += common.o
@@ -39,7 +37,7 @@ AFLAGS_sleep.o :=-Wa,-march=armv7-a$(plus_sec)
 
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += sleep-t2.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += sleep-t3.o
-obj-y                                   += tegra_fuse.o
+obj-y                                   += fuse.o
 obj-y                                   += kfuse.o
 obj-y                                   += csi.o
 obj-$(CONFIG_TEGRA_SILICON_PLATFORM)    += tegra_odm_fuses.o
@@ -47,13 +45,12 @@ obj-y                                   += i2c_error_recovery.o
 obj-y                                   += mc.o
 obj-$(CONFIG_TEGRA_STAT_MON)            += tegra2_statmon.o
 obj-$(CONFIG_USB_SUPPORT)               += usb_phy.o
-obj-$(CONFIG_USB_SUPPORT)               += tegra3_usb_phy.o
-obj-$(CONFIG_USB_SUPPORT)               += tegra2_usb_phy.o
+obj-$(CONFIG_USB_SUPPORT)               += tegra3_usb_phy.o 
+obj-$(CONFIG_USB_SUPPORT)               += tegra2_usb_phy.o 
 obj-$(CONFIG_FIQ)                       += fiq.o
 obj-$(CONFIG_TEGRA_FIQ_DEBUGGER)        += tegra_fiq_debugger.o
 obj-$(CONFIG_TEGRA_PWM)                 += pwm.o
 obj-$(CONFIG_TEGRA_ARB_SEMAPHORE)       += arb_sema.o
-
 ifeq ($(CONFIG_TEGRA_SILICON_PLATFORM),y)
 obj-y                                   += dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += tegra2_dvfs.o
@@ -91,7 +88,6 @@ obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += cpu-tegra3.o
 endif
 endif
 obj-$(CONFIG_TEGRA_PCI)                 += pcie.o
-obj-$(CONFIG_USB_SUPPORT)               += usb_phy.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-y                                   += cpuidle.o
 ifeq ($(CONFIG_PM_SLEEP),y)
@@ -208,6 +204,28 @@ obj-${CONFIG_MACH_KAI}                  += board-kai-sdhci.o
 obj-${CONFIG_MACH_KAI}                  += board-kai-sensors.o
 obj-y                                   += eeprom-wifi-mac.o
 
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru.o
+obj-${CONFIG_MACH_ENDEAVORU}    	+= board-endeavoru-panel.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-pinmux.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-sdhci.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-memory.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-power.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-baseband.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-sensors.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-audio.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= board-endeavoru-camera.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= tegra_flashlight.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= devices_htc.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= htc_audio_power.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= htc_simhotswap.o
+obj-${CONFIG_MACH_ENDEAVORU}		+= nand_partitions.o
+
+obj-${CONFIG_HTC_BATT_CORE}             += htc_battery_core.o
+obj-$(CONFIG_BATTERY_TPS80032)          += htc_battery_tps80032.o
+
+obj-$(CONFIG_HTC_HEADSET_MGR) 		+= htc_headset_mgr.o
+obj-$(CONFIG_HTC_HEADSET_GPIO) 		+= htc_headset_gpio.o
+obj-$(CONFIG_HTC_HEADSET_PMIC) 		+= htc_headset_pmic.o
+
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o
-

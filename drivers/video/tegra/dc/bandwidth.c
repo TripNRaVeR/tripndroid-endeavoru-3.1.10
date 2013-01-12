@@ -230,12 +230,22 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
 void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 {
 	unsigned i;
+	bool yuvp = false;
 
 	if (use_new || dc->emc_clk_rate != dc->new_emc_clk_rate) {
 		/* going from 0 to non-zero */
 		if (!dc->emc_clk_rate && !tegra_is_clk_enabled(dc->emc_clk))
 			clk_enable(dc->emc_clk);
 
+		if (dc->out->video_min_bw && dc->ndev->id == 0) {
+			for (i = 0; i < DC_N_WINDOWS; i++) {
+				struct tegra_dc_win *w = &dc->windows[i];
+				yuvp |= tegra_dc_is_yuv_planar(w->fmt);
+			}
+
+			if (yuvp)
+				dc->emc_clk_rate = max(dc->out->video_min_bw,dc->emc_clk_rate);
+		}
 		clk_set_rate(dc->emc_clk,
 			max(dc->emc_clk_rate, dc->new_emc_clk_rate));
 		dc->emc_clk_rate = dc->new_emc_clk_rate;

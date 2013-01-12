@@ -2169,6 +2169,7 @@ static int aic3262_set_bias_level(struct snd_soc_codec *codec,
 	return 0;
 }
 
+
 /*
  *----------------------------------------------------------------------------
  * Function : aic3262_suspend

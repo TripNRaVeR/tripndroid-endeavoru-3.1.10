@@ -1788,6 +1788,7 @@ static int tegra_nvavp_suspend(struct nvhost_device *ndev, pm_message_t state)
 	}
 
 	mutex_unlock(&nvavp->open_lock);
+
 	return ret;
 }
 

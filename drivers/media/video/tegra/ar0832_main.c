@@ -23,7 +23,6 @@
 #include <linux/regulator/consumer.h>
 #include <media/ar0832_main.h>
 
-
 #define POS_ACTUAL_LOW			0
 #define POS_ACTUAL_HIGH			255
 #define SETTLE_TIME				100

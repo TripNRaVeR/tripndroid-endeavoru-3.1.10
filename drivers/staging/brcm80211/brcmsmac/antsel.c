@@ -140,7 +140,6 @@ struct antsel_info *brcms_c_antsel_attach(struct brcms_c_info *wlc)
 				wiphy_err(wlc->wiphy, "antsel_attach: 2o3 "
 					  "board cfg invalid\n");
 			}
-
 			break;
 		default:
 			break;

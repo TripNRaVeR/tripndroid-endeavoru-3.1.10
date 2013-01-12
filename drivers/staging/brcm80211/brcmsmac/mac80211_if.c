@@ -496,27 +496,23 @@ brcms_ops_bss_info_changed(struct ieee80211_hw *hw,
 		wiphy_err(wiphy, "%s: Beacon enabled: %s\n", __func__,
 			  info->enable_beacon ? "true" : "false");
 	}
-
 	if (changed & BSS_CHANGED_CQM) {
 		/* Connection quality monitor config changed */
 		wiphy_err(wiphy, "%s: cqm change: threshold %d, hys %d "
 			  " (implement)\n", __func__, info->cqm_rssi_thold,
 			  info->cqm_rssi_hyst);
 	}
-
 	if (changed & BSS_CHANGED_IBSS) {
 		/* IBSS join status changed */
 		wiphy_err(wiphy, "%s: IBSS joined: %s (implement)\n", __func__,
 			  info->ibss_joined ? "true" : "false");
 	}
-
 	if (changed & BSS_CHANGED_ARP_FILTER) {
 		/* Hardware ARP filter address list or state changed */
 		wiphy_err(wiphy, "%s: arp filtering: enabled %s, count %d"
 			  " (implement)\n", __func__, info->arp_filter_enabled ?
 			  "true" : "false", info->arp_addr_cnt);
 	}
-
 	if (changed & BSS_CHANGED_QOS) {
 		/*
 		 * QoS for this association was enabled/disabled.

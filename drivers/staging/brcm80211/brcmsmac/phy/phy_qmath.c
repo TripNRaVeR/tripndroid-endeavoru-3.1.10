@@ -121,7 +121,6 @@ s32 qm_shl32(s32 op, int shift)
 	} else {
 		result = result >> (-shift);
 	}
-
 	return result;
 }
 
@@ -146,7 +145,6 @@ s16 qm_shl16(s16 op, int shift)
 	} else {
 		result = result >> (-shift);
 	}
-
 	return result;
 }
 

@@ -35,6 +35,7 @@
  *     indeed an AC3 stream packed in SPDIF frames (i.e. no real AC3 stream).
  */
 
+
 #include <linux/bitops.h>
 #include <linux/init.h>
 #include <linux/list.h>
@@ -545,7 +546,6 @@ snd_usb_audio_probe(struct usb_device *dev,
 	chip->num_interfaces++;
 	chip->probing = 0;
 	mutex_unlock(&register_mutex);
-
 	return chip;
 
  __error:
@@ -556,7 +556,6 @@ snd_usb_audio_probe(struct usb_device *dev,
 	}
 	mutex_unlock(&register_mutex);
  __err_val:
-
 	return NULL;
 }
 

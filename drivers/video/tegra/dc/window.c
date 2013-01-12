@@ -15,6 +15,7 @@
  * GNU General Public License for more details.
  *
  */
+
 #include <linux/err.h>
 #include <linux/types.h>
 #include <mach/dc.h>
@@ -23,8 +24,8 @@
 #include "dc_config.h"
 #include "dc_priv.h"
 
+atomic_t update_frame = ATOMIC_INIT(0);
 static int no_vsync;
-static atomic_t frame_end_ref = ATOMIC_INIT(0);
 
 module_param_named(no_vsync, no_vsync, int, S_IRUGO | S_IWUSR);
 
@@ -39,17 +40,6 @@ static bool tegra_dc_windows_are_clean(struct tegra_dc_win *windows[],
 	}
 
 	return true;
-}
-
-int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable)
-{
-	tegra_dc_writel(dc, FRAME_END_INT, DC_CMD_INT_STATUS);
-	if (enable) {
-		atomic_inc(&frame_end_ref);
-		tegra_dc_unmask_interrupt(dc, FRAME_END_INT);
-	} else if (!atomic_dec_return(&frame_end_ref))
-		tegra_dc_mask_interrupt(dc, FRAME_END_INT);
-	return 0;
 }
 
 static int get_topmost_window(u32 *depths, unsigned long *wins)
@@ -211,6 +201,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 	unsigned long update_mask = GENERAL_ACT_REQ;
 	unsigned long val;
 	bool update_blend = false;
+	bool is_yuvp = 0;
 	int i;
 
 	dc = windows[0]->dc;
@@ -273,7 +264,6 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 			update_mask |= WIN_A_ACT_REQ << win->idx;
 
 		if (!WIN_IS_ENABLED(win)) {
-			dc->windows[i].dirty = 1;
 			tegra_dc_writel(dc, 0, DC_WIN_WIN_OPTIONS);
 			continue;
 		}
@@ -418,14 +408,15 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 			FRAME_END_INT | V_BLANK_INT | ALL_UF_INT);
 	} else {
 		clear_bit(V_BLANK_FLIP, &dc->vblank_ref_count);
-		tegra_dc_mask_interrupt(dc, V_BLANK_INT | ALL_UF_INT);
-		if (!atomic_read(&frame_end_ref))
-			tegra_dc_mask_interrupt(dc, FRAME_END_INT);
+		tegra_dc_mask_interrupt(dc,
+			FRAME_END_INT | V_BLANK_INT | ALL_UF_INT);
 	}
 
-	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) {
+		atomic_set(&update_frame,1);
 		schedule_delayed_work(&dc->one_shot_work,
 				msecs_to_jiffies(dc->one_shot_delay_ms));
+	}
 
 	/* update EMC clock if calculated bandwidth has changed */
 	tegra_dc_program_bandwidth(dc, false);
@@ -440,6 +431,32 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 	mutex_unlock(&dc->lock);
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
 		mutex_unlock(&dc->one_shot_lock);
+
+	for (i = 0; i < n; i++) {
+		struct tegra_dc_win *win = windows[i];
+		bool yuvp = tegra_dc_is_yuv_planar(win->fmt);
+		is_yuvp |= yuvp;
+	}
+
+	if (dc->ndev->id == 0) {
+		struct tegra_dc_out *out = dc->out;
+		struct tegra_dsi_out *dsi = out->dsi;
+		struct tegra_dsi_cmd *cur = NULL;
+		int n = dsi->n_cabc_cmd;
+		if (out && dsi && dc->out_ops && dc->out_ops->send_cmd) {
+			if (is_yuvp && !dc->isyuv_lasttime) {
+				cur = dsi->dsi_cabc_still_mode;
+				dc->isyuv_lasttime = is_yuvp;
+			}
+			else if (!is_yuvp && dc->isyuv_lasttime) {
+				cur = dsi->dsi_cabc_moving_mode;
+				dc->isyuv_lasttime = is_yuvp;
+			}
+			if (cur) {
+				dc->out_ops->send_cmd(dc, cur, n);
+			}
+		}
+	}
 
 	return 0;
 }
@@ -469,12 +486,10 @@ void tegra_dc_trigger_windows(struct tegra_dc *dc)
 	}
 
 	if (!dirty) {
-		if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
-			&& !atomic_read(&frame_end_ref))
+		if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE))
 			tegra_dc_mask_interrupt(dc, FRAME_END_INT);
 	}
 
 	if (completed)
 		wake_up(&dc->wq);
 }
-

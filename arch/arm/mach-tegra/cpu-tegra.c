@@ -56,6 +56,11 @@ static DEFINE_MUTEX(tegra_cpu_lock);
 static bool is_suspended;
 static int suspend_index;
 
+/* TripNRaVeR: remove T3 performance limitations */
+unsigned int unleash = 1;
+module_param(unleash, uint, 0644);
+EXPORT_SYMBOL (unleash);
+
 static bool force_policy_max;
 
 static int force_policy_max_set(const char *arg, const struct kernel_param *kp)
@@ -205,8 +210,13 @@ static void edp_update_limit(void)
 #endif
 }
 
+extern unsigned int unleash;
+
 static unsigned int edp_governor_speed(unsigned int requested_speed)
 {
+    if (unlikely(unleash))
+        return requested_speed;
+
 	if ((!edp_limit) || (requested_speed <= edp_limit))
 		return requested_speed;
 	else
