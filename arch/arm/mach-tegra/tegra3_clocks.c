@@ -4471,6 +4471,8 @@ struct clk tegra_list_clks[] = {
  * table under two names.
  */
 struct clk_duplicate tegra_clk_duplicates[] = {
+	CLK_DUPLICATE("vi_sensor", NULL, "vi_sensor"),
+	CLK_DUPLICATE("csus", NULL, "csus"),
 	CLK_DUPLICATE("usbd", "utmip-pad", NULL),
 	CLK_DUPLICATE("usbd", "tegra-ehci.0", NULL),
 	CLK_DUPLICATE("usbd", "tegra-otg", NULL),
