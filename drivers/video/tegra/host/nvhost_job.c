@@ -144,6 +144,7 @@ static void job_free(struct kref *ref)
 	if (job->memmgr)
 		mem_op().put_mgr(job->memmgr);
 	vfree(job);
+	job = NULL;
 }
 
 /* Acquire reference to a hardware context. Used for keeping saved contexts in
