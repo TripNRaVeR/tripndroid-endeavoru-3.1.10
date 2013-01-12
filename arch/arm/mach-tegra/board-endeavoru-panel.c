@@ -54,22 +54,24 @@
 #define DSI_PANEL_RESET 1
 
 #ifdef CONFIG_TEGRA_DC
-static struct regulator *enterprise_dsi_reg;
-static bool dsi_regulator_status;
-static struct regulator *enterprise_lcd_reg;
+static struct regulator *enterprise_dsi_reg = NULL;
+static struct regulator *v_lcm_3v3 = NULL;
+static struct regulator *v_lcmio_1v8 = NULL;
 
-static struct regulator *enterprise_hdmi_reg;
-static struct regulator *enterprise_hdmi_pll;
+static struct regulator *enterprise_hdmi_reg = NULL;
+static struct regulator *enterprise_hdmi_pll = NULL;
 #endif
+
+#define POWER_WAKEUP_ENR 7
 
 #define ENTERPRISE_STEREO_3D		0
 #define ENTERPRISE_STEREO_2D		1
 #define ENTERPRISE_STEREO_LANDSCAPE	0
 #define ENTERPRISE_STEREO_PORTRAIT	1
 
-#define LCM_TE				TEGRA_GPIO_PJ1
-#define LCM_PWM				TEGRA_GPIO_PW1
-#define enterprise_dsi_panel_reset	TEGRA_GPIO_PN6
+#define LCM_TE		TEGRA_GPIO_PJ1
+#define LCM_PWM 	TEGRA_GPIO_PW1
+#define LCM_RST 	TEGRA_GPIO_PN6
 
 #define MHL_INT         TEGRA_GPIO_PC7
 #define MHL_USB_SEL     TEGRA_GPIO_PE0
@@ -84,84 +86,65 @@ struct workqueue_struct *bkl_wq;
 struct work_struct bkl_work;
 struct timer_list bkl_timer;
 
+static int is_power_on = 0;
+
 static tegra_dc_bl_output enterprise_bl_output_measured_a02 = {
-	1, 5, 9, 10, 11, 12, 12, 13,
-	13, 14, 14, 15, 15, 16, 16, 17,
-	17, 18, 18, 19, 19, 20, 21, 21,
-	22, 22, 23, 24, 24, 25, 26, 26,
-	27, 27, 28, 29, 29, 31, 31, 32,
-	32, 33, 34, 35, 36, 36, 37, 38,
-	39, 39, 40, 41, 41, 42, 43, 43,
-	44, 45, 45, 46, 47, 47, 48, 49,
-	49, 50, 51, 51, 52, 53, 53, 54,
-	55, 56, 56, 57, 58, 59, 60, 61,
-	61, 62, 63, 64, 65, 65, 66, 67,
-	67, 68, 69, 69, 70, 71, 71, 72,
-	73, 73, 74, 74, 75, 76, 76, 77,
-	77, 78, 79, 79, 80, 81, 82, 83,
-	83, 84, 85, 85, 86, 86, 88, 89,
-	90, 91, 91, 92, 93, 93, 94, 95,
-	95, 96, 97, 97, 98, 99, 99, 100,
-	101, 101, 102, 103, 103, 104, 105, 105,
-	107, 107, 108, 109, 110, 111, 111, 112,
-	113, 113, 114, 115, 115, 116, 117, 117,
-	118, 119, 119, 120, 121, 122, 123, 124,
-	124, 125, 126, 126, 127, 128, 129, 129,
-	130, 131, 131, 132, 133, 133, 134, 135,
-	135, 136, 137, 137, 138, 139, 139, 140,
-	142, 142, 143, 144, 145, 146, 147, 147,
-	148, 149, 149, 150, 151, 152, 153, 153,
-	153, 154, 155, 156, 157, 158, 158, 159,
-	160, 161, 162, 163, 163, 164, 165, 165,
-	166, 166, 167, 168, 169, 169, 170, 170,
-	171, 172, 173, 173, 174, 175, 175, 176,
-	176, 178, 178, 179, 180, 181, 182, 182,
-	183, 184, 185, 186, 186, 187, 188, 188
+	0, 1, 2, 3, 4, 5, 6, 7,
+	8, 9, 10, 12, 13, 14, 15, 16,
+	17, 19, 20, 21, 22, 22, 23, 24,
+	25, 26, 27, 28, 29, 29, 30, 32,
+	33, 34, 35, 36, 38, 39, 40, 42,
+	43, 44, 46, 47, 49, 50, 51, 52,
+	53, 54, 55, 56, 57, 58, 59, 60,
+	61, 63, 64, 66, 67, 69, 70, 71,
+	72, 73, 74, 75, 76, 77, 78, 79,
+	80, 81, 82, 83, 84, 84, 85, 86,
+	87, 88, 89, 90, 91, 92, 93, 94,
+	95, 96, 97, 98, 99, 100, 101, 102,
+	103, 104, 105, 106, 107, 108, 109, 110,
+	110, 111, 112, 113, 113, 114, 115, 116,
+	116, 117, 118, 118, 119, 120, 121, 122,
+	123, 124, 125, 126, 127, 128, 129, 130,
+	130, 131, 132, 133, 134, 135, 136, 137,
+	138, 139, 140, 141, 142, 143, 144, 145,
+	146, 147, 148, 149, 150, 151, 152, 153,
+	154, 155, 156, 157, 158, 159, 160, 160,
+	161, 162, 163, 163, 164, 165, 165, 166,
+	167, 168, 168, 169, 170, 171, 172, 173,
+	174, 175, 176, 176, 177, 178, 179, 180,
+	181, 182, 183, 184, 185, 186, 187, 188,
+	189, 190, 191, 191, 192, 193, 194, 194,
+	195, 196, 197, 197, 198, 199, 199, 200,
+	202, 203, 205, 206, 208, 209, 211, 212,
+	213, 215, 216, 218, 219, 220, 221, 222,
+	223, 224, 225, 226, 227, 228, 229, 230,
+	231, 232, 233, 234, 235, 236, 237, 238,
+	239, 240, 241, 243, 244, 245, 247, 248,
+	250, 251, 251, 252, 253, 254, 254, 255,
 };
 
 static atomic_t sd_brightness = ATOMIC_INIT(255);
 static p_tegra_dc_bl_output bl_output;
-static bool g_display_on = true;
 
-#define BACKLIGHT_MAX 255
+#define BACKLIGHT_MAX		255
+#define MAP_PWM_DEF		90
+#define MAP_PWM_LOW_DEF		79
+#define MAP_PWM_HIGH_DEF	102
 
-#define ORIG_PWM_MAX 255
-#define ORIG_PWM_DEF 142
-#define ORIG_PWM_MIN 30
-
-#define MAP_PWM_MAX     255
-#define MAP_PWM_DEF     78
-#define MAP_PWM_MIN     7
-
-#define MAP_PWM_LOW_DEF         79
-#define MAP_PWM_HIGH_DEF        102
-
-static int max_pwm = MAP_PWM_MAX;
 static int def_pwm = MAP_PWM_DEF;
-static int min_pwm = MAP_PWM_MIN;
-
-static unsigned char shrink_pwm(int val)
-{
-	unsigned char shrink_br;
-
-	if (val <= ORIG_PWM_MIN)
-		shrink_br = min_pwm;
-	else if (val > ORIG_PWM_MIN && val <= ORIG_PWM_DEF)
-		shrink_br = min_pwm +
-			(val-ORIG_PWM_MIN)*(def_pwm-min_pwm)/(ORIG_PWM_DEF-ORIG_PWM_MIN);
-	else
-	shrink_br = def_pwm +
-	(val-ORIG_PWM_DEF)*(max_pwm-def_pwm)/(ORIG_PWM_MAX-ORIG_PWM_DEF);
-
-	return shrink_br;
-}
 
 static int enterprise_backlight_notify(struct device *unused, int brightness)
 {
 	int cur_sd_brightness = atomic_read(&sd_brightness);
 
-	if (brightness > 0)
-		brightness = shrink_pwm(brightness);
+	/* SD brightness is a percentage, 8-bit value. */
+	brightness = (brightness * cur_sd_brightness) / 255;
+
+	/* Apply any backlight response curve */
+	if (brightness > 255)
+		pr_info("Error: Brightness > 255!\n");
+	else
+		brightness = bl_output[brightness];
 
 	return brightness;
 }
@@ -190,7 +173,6 @@ static struct platform_tegra_pwm_backlight_data enterprise_disp1_backlight_data 
 	.check_fb		= enterprise_disp1_check_fb,
 	.backlight_status	= BACKLIGHT_ENABLE,
 	.dimming_enable		= true,
-	.cam_launch_bkl_value 	= 181,
 };
 
 static struct platform_device enterprise_disp1_backlight_device = {
@@ -214,35 +196,13 @@ static int enterprise_hdmi_vddio_disable(void)
 
 static int enterprise_hdmi_enable(void)
 {
-	int ret;
-	if (!enterprise_hdmi_reg) {
-		enterprise_hdmi_reg = regulator_get(NULL, "avdd_hdmi");
-		if (IS_ERR_OR_NULL(enterprise_hdmi_reg)) {
-			pr_err("hdmi: couldn't get regulator avdd_hdmi\n");
-			enterprise_hdmi_reg = NULL;
-			return PTR_ERR(enterprise_hdmi_reg);
-		}
-	}
-	ret = regulator_enable(enterprise_hdmi_reg);
-	if (ret < 0) {
-		pr_err("hdmi: couldn't enable regulator avdd_hdmi\n");
-		return ret;
-	}
-	if (!enterprise_hdmi_pll) {
-		enterprise_hdmi_pll = regulator_get(NULL, "avdd_hdmi_pll");
-		if (IS_ERR_OR_NULL(enterprise_hdmi_pll)) {
-			pr_err("hdmi: couldn't get regulator avdd_hdmi_pll\n");
-			enterprise_hdmi_pll = NULL;
-			regulator_put(enterprise_hdmi_reg);
-			enterprise_hdmi_reg = NULL;
-			return PTR_ERR(enterprise_hdmi_pll);
-		}
-	}
-	ret = regulator_enable(enterprise_hdmi_pll);
-	if (ret < 0) {
-		pr_err("hdmi: couldn't enable regulator avdd_hdmi_pll\n");
-		return ret;
-	}
+	REGULATOR_GET(enterprise_hdmi_reg, "avdd_hdmi");
+	regulator_enable(enterprise_hdmi_reg);
+
+	REGULATOR_GET(enterprise_hdmi_pll, "avdd_hdmi_pll");
+	regulator_enable(enterprise_hdmi_pll);
+
+failed:
 	return 0;
 }
 
@@ -259,6 +219,7 @@ static int enterprise_hdmi_disable(void)
 
 	return 0;
 }
+
 static struct resource enterprise_disp1_resources[] = {
 	{
 		.name	= "irq",
@@ -352,94 +313,66 @@ static struct tegra_dc_platform_data enterprise_disp2_pdata = {
 	.emc_clk_rate	= 300000000,
 };
 
-static int avdd_dsi_csi_rail_enable(void)
-{
-	int ret;
-
-	if (dsi_regulator_status == true)
-		return 0;
-
-	if (enterprise_dsi_reg == NULL) {
-		enterprise_dsi_reg = regulator_get(NULL, "avdd_dsi_csi");
-		if (IS_ERR_OR_NULL(enterprise_dsi_reg)) {
-			pr_err("dsi: Could not get regulator avdd_dsi_csi\n");
-			enterprise_dsi_reg = NULL;
-			return PTR_ERR(enterprise_dsi_reg);
-		}
-	}
-	ret = regulator_enable(enterprise_dsi_reg);
-	if (ret < 0) {
-		pr_err("DSI regulator avdd_dsi_csi could not be enabled\n");
-		return ret;
-	}
-	dsi_regulator_status = true;
-	return 0;
-}
-
-static int avdd_dsi_csi_rail_disable(void)
-{
-	int ret;
-
-	if (dsi_regulator_status == false)
-		return 0;
-
-	if (enterprise_dsi_reg == NULL) {
-		pr_warn("%s: unbalanced disable\n", __func__);
-		return -EIO;
-	}
-
-	ret = regulator_disable(enterprise_dsi_reg);
-	if (ret < 0) {
-		pr_err("DSI regulator avdd_dsi_csi cannot be disabled\n");
-		return ret;
-	}
-	dsi_regulator_status = false;
-	return 0;
-}
-
 static int enterprise_dsi_panel_enable(void)
 {
-	int ret;
+	int err = 0;
 
-	ret = avdd_dsi_csi_rail_enable();
-	if (ret)
-		return ret;
-
-#if DSI_PANEL_RESET
-	if (g_display_on != true) {
-		ret = gpio_request(enterprise_dsi_panel_reset, "panel reset");
-		if (ret < 0)
-			return ret;
-
-		ret = gpio_direction_output(enterprise_dsi_panel_reset, 0);
-		if (ret < 0) {
-			gpio_free(enterprise_dsi_panel_reset);
-			return ret;
-		}
-
-		gpio_set_value(enterprise_dsi_panel_reset, 0);
-		udelay(2000);
-		gpio_set_value(enterprise_dsi_panel_reset, 1);
-		mdelay(20);
+	if (is_power_on) {
+		return 0;
 	}
-#endif
 
-	return ret;
+	gpio_set_value(LCM_RST, 1);
+	msleep(5);
+
+	REGULATOR_GET(enterprise_dsi_reg, "avdd_dsi_csi");
+	regulator_enable(enterprise_dsi_reg);
+
+	REGULATOR_GET(v_lcm_3v3, "v_lcm_3v3");
+	REGULATOR_GET(v_lcmio_1v8, "v_lcmio_1v8");
+
+	regulator_enable(v_lcmio_1v8);
+	regulator_enable(v_lcm_3v3);
+	msleep(5);
+
+	tegra_pinmux_set_pullupdown(gpio_to_pingroup[LCM_TE],  TEGRA_PUPD_NORMAL);
+	tegra_gpio_disable(LCM_TE);
+
+	is_power_on = 1;
+
+failed:
+
+	return err;
 }
 
 static int enterprise_dsi_panel_disable(void)
 {
+	int err = 0;
 
-	if (enterprise_lcd_reg != NULL)
-		regulator_disable(enterprise_lcd_reg);
+	if (!is_power_on) {
+		return 0;
+	}
 
-#if DSI_PANEL_RESET
-	if (g_display_on != true) {
-		gpio_free(enterprise_dsi_panel_reset);
-	} else
-		g_display_on = false;
-#endif
-	return 0;
+	gpio_set_value(LCM_RST, 0);
+	msleep(5);
+
+	REGULATOR_GET(v_lcm_3v3, "v_lcm_3v3");
+	regulator_disable(v_lcm_3v3);
+
+	REGULATOR_GET(v_lcmio_1v8, "v_lcmio_1v8");
+	regulator_disable(v_lcmio_1v8);
+
+	REGULATOR_GET(enterprise_dsi_reg, "avdd_dsi_csi");
+	regulator_disable(enterprise_dsi_reg);
+	msleep(5);
+
+	tegra_gpio_enable(LCM_TE);
+	tegra_pinmux_set_pullupdown(gpio_to_pingroup[LCM_TE],  TEGRA_PUPD_PULL_DOWN);
+
+	is_power_on = 0;
+
+failed:
+
+	return err;
 }
 #endif
 
@@ -470,8 +403,8 @@ static void enterprise_stereo_set_orientation(int mode)
 #ifdef CONFIG_TEGRA_DC
 static int enterprise_dsi_panel_postsuspend(void)
 {
-	/* Disable enterprise dsi rail */
-	return avdd_dsi_csi_rail_disable();
+	int err = 0;
+	return err;
 }
 #endif
 
@@ -531,9 +464,6 @@ static struct tegra_dsi_cmd dsi_init_sharp_hx_c4_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sony_nt_c1_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -993,9 +923,7 @@ static struct tegra_dsi_cmd dsi_init_sony_nt_c1_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sony_nt_c2_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
+
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -1455,9 +1383,7 @@ static struct tegra_dsi_cmd dsi_init_sony_nt_c2_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sharp_nt_c1_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
+
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -1921,9 +1847,7 @@ static struct tegra_dsi_cmd dsi_init_sharp_nt_c1_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sharp_nt_c2_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
+
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -2366,9 +2290,7 @@ static struct tegra_dsi_cmd dsi_init_sharp_nt_c2_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sharp_nt_c2_9a_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
+
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -2811,9 +2733,7 @@ static struct tegra_dsi_cmd dsi_init_sharp_nt_c2_9a_cmd[]= {
 
 static struct tegra_dsi_cmd dsi_init_sharp_unknow_cmd[]= {
 	DSI_CMD_SHORT(0x15, 0xC2, 0x08),
-	/*this is porch setting for video mode
-	DSI_CMD_LONG(0x39, porch),
-	*/
+
 	/*color enhancement 2.2*/
 	DSI_CMD_SHORT(0x15, 0xFF, 0x03),
 	DSI_CMD_SHORT(0x15, 0xFE, 0x08),
@@ -2892,7 +2812,21 @@ static struct tegra_dsi_cmd dsi_suspend_cmd[] = {
 struct tegra_dsi_out enterprise_dsi = {
 	.n_data_lanes = 2,
 	.pixel_format = TEGRA_DSI_PIXEL_FORMAT_24BIT_P,
+#if(DC_CTRL_MODE & TEGRA_DC_OUT_ONE_SHOT_MODE)
+	/* For one-shot mode, actual refresh rate is decided by the
+	 * frequency of TE signal. Although the frequency of TE is
+	 * expected running at rated_refresh_rate (typically 60Hz),
+	 * it may vary. Mismatch between freq of DC and TE signal
+	 * would cause frame drop. We increase refresh_rate to the
+	 * value larger than maximum TE frequency to avoid missing
+	 * any TE signal. The value of refresh_rate is also used to
+	 * calculate the pixel clock.
+	 */
 	.refresh_rate = 66,
+	.rated_refresh_rate = 60,
+#else
+	.refresh_rate = 60,
+#endif
 
 	.virtual_channel = TEGRA_DSI_VIRTUAL_CHANNEL_0,
 
@@ -2922,19 +2856,6 @@ struct tegra_dsi_out enterprise_dsi = {
 	.lp_read_cmd_mode_freq_khz = 200000,
 
 	.impedance_para = 3,
-
-	.phy_timing.t_hsdexit_ns = 108,
-	.phy_timing.t_hstrail_ns = 60,
-	.phy_timing.t_datzero_ns = 172,
-	.phy_timing.t_hsprepare_ns = 68,
-	.phy_timing.t_clktrail_ns = 68,
-	.phy_timing.t_clkpost_ns = 124,
-	.phy_timing.t_clkzero_ns = 220,
-	.phy_timing.t_clkprepare_ns = 36,
-	.phy_timing.t_taget_ns = 5700,
-	.phy_timing.t_tasure_ns = 2900,
-	.phy_timing.t_tago_ns = 7100,
-	.phy_timing.t_wakeup_ns = 25700,
 };
 
 static struct tegra_stereo_out enterprise_stereo = {
@@ -2995,7 +2916,9 @@ static struct tegra_dc_out enterprise_disp1_out = {
 	.width		= 53,
 	.height		= 95,
 
-	.video_min_bw 	= 51000000,
+	.power_wakeup	= POWER_WAKEUP_ENR,
+	.performance_tuning = 1,
+	.video_min_bw	= 51000000,
 };
 
 static struct tegra_dc_platform_data enterprise_disp1_pdata = {
