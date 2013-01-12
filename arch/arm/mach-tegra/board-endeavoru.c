@@ -139,39 +139,28 @@ static struct tegra_thermal_data thermal_data = {
 		.desc = #_id,			\
 		.type = EV_KEY,			\
 		.wakeup = _iswake,		\
-		.debounce_interval = 10,	\
+		.debounce_interval = 20,	\
 	}
 
-#define GPIO_IKEY(_id, _irq, _iswake, _deb)	\
-	{					\
-		.code = _id,			\
-		.gpio = -1,			\
-		.irq = _irq,			\
-		.desc = #_id,			\
-		.type = EV_KEY,			\
-		.wakeup = _iswake,		\
-		.debounce_interval = _deb,	\
-	}
-
-static int enrkey_wakeup(void)
-{ 
-	unsigned long status =  
-	readl(IO_ADDRESS(TEGRA_PMC_BASE) + PMC_WAKE_STATUS); 
-	return status & TEGRA_WAKE_GPIO_PU6 ? KEY_POWER : KEY_RESERVED; 
+static int enrkey_wakeup(void) {
+	if ( is_resume_from_deep_suspend() ) {
+		unsigned long status = readl(IO_ADDRESS(TEGRA_PMC_BASE) + PMC_WAKE_STATUS);
+		return status & TEGRA_WAKE_GPIO_PU6 ? KEY_POWER : KEY_RESERVED;
+	} else
+		return KEY_RESERVED;
 }
 
 static struct gpio_keys_button A_PROJECT_keys[] = {
-	[0] = GPIO_KEY(KEY_VOLUMEUP, PS0, 1),
-	[1] = GPIO_KEY(KEY_VOLUMEDOWN, PW3, 1),
-	[2] = GPIO_KEY(KEY_POWER, PU6, 1),
-	[3] = GPIO_IKEY(KEY_POWER, ENT_TPS80031_IRQ_BASE + TPS80031_INT_PWRON, 1, 3000),
- };
+	[0] = GPIO_KEY(KEY_POWER, PU6, 1),
+	[1] = GPIO_KEY(KEY_VOLUMEUP, PS0, 1),
+	[2] = GPIO_KEY(KEY_VOLUMEDOWN, PW3, 1),
+};
 
 static struct gpio_keys_platform_data A_PROJECT_keys_platform_data = {
 	.buttons	= A_PROJECT_keys,
 	.nbuttons	= ARRAY_SIZE(A_PROJECT_keys),
 	.wakeup_key     = enrkey_wakeup,
- };
+};
 
 static struct platform_device A_PROJECT_keys_device = {
 	.name   = "gpio-keys",
