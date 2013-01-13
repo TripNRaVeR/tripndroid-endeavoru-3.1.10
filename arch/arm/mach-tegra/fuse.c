@@ -120,7 +120,13 @@ void tegra_init_fuse(void)
 {
 	u32 reg = readl(IO_TO_VIRT(TEGRA_CLK_RESET_BASE + 0x48));
 	reg |= 1 << 28;
+	reg |= 1 << 0;
 	writel(reg, IO_TO_VIRT(TEGRA_CLK_RESET_BASE + 0x48));
+	pr_err("nv - MISC_CLK_ENB: %x\n", readl(IO_TO_VIRT(TEGRA_CLK_RESET_BASE + 0x48)));
+	reg = readl(IO_TO_VIRT(TEGRA_AHB_ARB_BASE + 0xe0));
+	reg |= 1 << 2;
+	writel(reg, IO_TO_VIRT(TEGRA_AHB_ARB_BASE + 0xe0));
+	pr_err("nv - XBAR_CTRL: %x\n", readl(IO_TO_VIRT(TEGRA_AHB_ARB_BASE + 0xe0)));
 	tegra_init_speedo_data();
 
 	pr_info("Tegra Revision: %s "
