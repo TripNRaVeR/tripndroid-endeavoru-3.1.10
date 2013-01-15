@@ -468,7 +468,7 @@ static struct spi_driver spi_rawchip = {
 	},
 	.probe = spi_rawchip_probe,
 };
-
+/*
 void rawchip_spi_clock_control(int enable)
 {
 	int ret = 0;
@@ -478,7 +478,7 @@ void rawchip_spi_clock_control(int enable)
 	else
 		pr_info("[CAM] rawchip_spi_clock_control: turn %s spi clock", enable ? "on" : "off");
 }
-
+*/
 int rawchip_spi_init(void)
 {
 	int rc = -1;
