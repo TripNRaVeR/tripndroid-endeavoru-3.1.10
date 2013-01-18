@@ -593,6 +593,13 @@ config TEGRA_CRYPTO_DEV
 	Dev node /dev/tegra-crypto in order to get access to tegra aes
 	hardware from user space
 
+config TEGRA_VIBRATOR
+	bool "vibrator device driver on Tegra"
+	depends on ANDROID_TIMED_OUTPUT
+        default n
+        ---help---
+        Adds a vibrator driver
+
 config MAX1749_VIBRATOR
 	bool "MAX1749 vibrator device driver"
 	depends on ANDROID_TIMED_OUTPUT
