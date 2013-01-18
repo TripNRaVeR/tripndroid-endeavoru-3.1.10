@@ -19,7 +19,11 @@
 
 #include <linux/pm.h>
 #include <linux/suspend.h>
+#include <linux/completion.h>
 
+#include "gpio-names.h"
+
+#define BB_XMM_OEM1
 #define VENDOR_ID         0x1519
 #define PRODUCT_ID        0x0020
 #define TEGRA_EHCI_DEVICE "/sys/devices/platform/tegra-ehci.1/ehci_power"
@@ -41,7 +45,9 @@ enum baseband_type {
 struct baseband_power_platform_data {
 	enum baseband_type baseband_type;
 	struct platform_device* (*hsic_register)(void);
-	void (*hsic_unregister)(struct platform_device **);
+	void (*hsic_unregister)(struct platform_device *);
+	wait_queue_head_t bb_wait;
+	unsigned int pin_state;
 	union {
 		struct {
 			int mdm_reset;
@@ -59,6 +65,9 @@ struct baseband_power_platform_data {
 			int ipc_ap_wake;
 			int ipc_hsic_active;
 			int ipc_hsic_sus_req;
+			int bb_vdd_en;
+			int bb_rst_pwrdn;
+			int bb_rst2;
 			struct platform_device *hsic_device;
 		} xmm;
 	} modem;
@@ -71,47 +80,51 @@ enum baseband_xmm_power_work_state_t {
 	BBXMM_WORK_INIT_FLASH_STEP1,
 	/* initialize flash (with power management support) modem */
 	BBXMM_WORK_INIT_FLASH_PM_STEP1,
+	BBXMM_WORK_INIT_FLASH_PM_VER_LT_1130_STEP1,
+	BBXMM_WORK_INIT_FLASH_PM_VER_GE_1130_STEP1,
 	/* initialize flashless (with power management support) modem */
 	BBXMM_WORK_INIT_FLASHLESS_PM_STEP1,
-	BBXMM_WORK_INIT_FLASHLESS_PM_STEP2,
-	BBXMM_WORK_INIT_FLASHLESS_PM_STEP3,
-	BBXMM_WORK_INIT_FLASHLESS_PM_STEP4,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_LT_1130_WAIT_IRQ,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_LT_1130_STEP1,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_LT_1130_STEP2,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_GE_1130_STEP1,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_GE_1130_STEP2,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_GE_1130_STEP3,
+	BBXMM_WORK_INIT_FLASHLESS_PM_VER_GE_1130_STEP4,
 };
 
-struct xmm_power_data {
+struct baseband_xmm_power_work_t {
+	/* work structure must be first structure member */
+	struct work_struct work;
 	/* xmm modem state */
 	enum baseband_xmm_power_work_state_t state;
 	struct baseband_power_platform_data *pdata;
-	struct work_struct work;
 	struct platform_device *hsic_device;
-	wait_queue_head_t bb_wait;
-	/* host wakeup gpio state*/
-	unsigned int hostwake;
 };
 
 enum baseband_xmm_powerstate_t {
-	BBXMM_PS_L0	= 0,
-	BBXMM_PS_L2	= 1,
-	BBXMM_PS_L0TOL2	= 2,
-	BBXMM_PS_L2TOL0	= 3,
-	BBXMM_PS_UNINIT	= 4,
-	BBXMM_PS_INIT	= 5,
-	BBXMM_PS_L3	= 6,
+	BBXMM_PS_UNINIT	= 0,
+	BBXMM_PS_INIT	= 1,
+	BBXMM_PS_L0	= 2,
+	BBXMM_PS_L0TOL2	= 3,
+	BBXMM_PS_L2	= 4,
+	BBXMM_PS_L2TOL0	= 5,
+	BBXMM_PS_L2TOL3	= 6,
+	BBXMM_PS_L3	= 7,
+	BBXMM_PS_L3TOL0	= 8,
 	BBXMM_PS_LAST	= -1,
 };
 
-enum ipc_ap_wake_state_t {
-	IPC_AP_WAKE_UNINIT,
-	IPC_AP_WAKE_IRQ_READY,
-	IPC_AP_WAKE_INIT1,
-	IPC_AP_WAKE_INIT2,
-	IPC_AP_WAKE_L,
-	IPC_AP_WAKE_H,
-};
-
-irqreturn_t xmm_power_ipc_ap_wake_irq(int value);
+irqreturn_t baseband_xmm_power_ipc_ap_wake_irq(int irq, void *dev_id);
 
 void baseband_xmm_set_power_status(unsigned int status);
 extern struct xmm_power_data xmm_power_drv_data;
 
-#endif  /* BASEBAND_XMM_POWER_H */
+int debug_gpio_dump(void);
+int trigger_radio_fatal_get_coredump(char *reason);
+int trigger_silent_reset(char *reason);
+
+int Modem_is_6360(void);
+int Modem_is_6260(void);
+
+#endif  /* BASREBAND_XMM_POWER_H */
