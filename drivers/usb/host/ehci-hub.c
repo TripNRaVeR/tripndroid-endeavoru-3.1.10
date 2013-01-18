@@ -28,6 +28,8 @@
 
 /*-------------------------------------------------------------------------*/
 
+#include <mach/board_htc.h>
+
 #define	PORT_WAKE_BITS	(PORT_WKOC_E|PORT_WKDISC_E|PORT_WKCONN_E)
 
 #ifdef	CONFIG_PM
@@ -226,7 +228,7 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		while (port--) {
 			if (ehci->reset_done[port] != 0) {
 				spin_unlock_irq(&ehci->lock);
-				ehci_dbg(ehci, "suspend failed because "
+				ehci_err(ehci, "suspend failed because "
 						"port %d is resuming\n",
 						port + 1);
 				return -EBUSY;
@@ -261,6 +263,8 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 			set_bit(port, &ehci->owned_ports);
 		else if ((t1 & PORT_PE) && !(t1 & PORT_SUSPEND)) {
 			t2 |= PORT_SUSPEND;
+			printk(KERN_INFO"%s: set port[%d] PORT_SUSPEND\n", __func__, port);
+
 			set_bit(port, &ehci->bus_suspended);
 		}
 
@@ -278,7 +282,7 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		}
 
 		if (t1 != t2) {
-			ehci_vdbg (ehci, "port %d, %08x -> %08x\n",
+			ehci_info (ehci, "port %d, %08x -> %08x\n",
 				port + 1, t1, t2);
 			ehci_writel(ehci, t2, reg);
 			changed = 1;
@@ -380,6 +384,8 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	ehci_writel(ehci, (u32) ehci->async->qh_dma, &ehci->regs->async_next);
 
 	/* restore CMD_RUN, framelist size, and irq threshold */
+	if (get_radio_flag() & 0x0001)
+		ehci_info(ehci, "%s write USBCMD:%x\n", __func__, ehci->command);
 	ehci_writel(ehci, ehci->command, &ehci->regs->command);
 
 	/* Some controller/firmware combinations need a delay during which
@@ -416,8 +422,10 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 				(temp & PORT_SUSPEND)) {
 			temp |= PORT_RESUME;
 			set_bit(i, &resume_needed);
+			printk(KERN_INFO"%s: set port[%d] PORT_RESUME\n", __func__, i);
 		}
 		ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
+
 	}
 
 	/* msleep for 20ms only if code is trying to resume port */
@@ -433,7 +441,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 		if (test_bit(i, &resume_needed)) {
 			temp &= ~(PORT_RWC_BITS | PORT_RESUME);
 			ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
-			ehci_vdbg (ehci, "resumed port %d\n", i + 1);
+			ehci_info (ehci, "resumed port %d\n", i + 1);
 		}
 	}
 	(void) ehci_readl(ehci, &ehci->regs->command);
@@ -672,10 +680,12 @@ static int ehci_hub_control (
 	u32 __iomem	*status_reg = &ehci->regs->port_status[
 				(wIndex & 0xff) - 1];
 	u32 __iomem	*hostpc_reg = NULL;
+	u32 __iomem	*command_reg = &ehci->regs->command;
 	u32		temp, temp1, status;
 	unsigned long	flags;
 	int		retval = 0;
 	unsigned	selector;
+	int			wait_time_us = 25000;
 
 	/*
 	 * FIXME:  support SetPortFeatures USB_PORT_FEAT_INDICATOR.
@@ -742,6 +752,23 @@ static int ehci_hub_control (
 			/* resume signaling for 20 msec */
 			temp &= ~(PORT_RWC_BITS | PORT_WAKE_BITS);
 			ehci_writel(ehci, temp | PORT_RESUME, status_reg);
+
+			while (temp & (3 << 6) && --wait_time_us) {
+				udelay(1);
+				temp = ehci_readl(ehci, status_reg);
+			}
+			local_irq_save(flags);
+			udelay(3);
+
+			/* Set RUN bit */
+			temp = ehci_readl(ehci, command_reg);
+			temp |= 1;
+			ehci_writel(ehci, temp, command_reg);
+			local_irq_restore(flags);
+
+			pr_info("%s(%d) Waiting %d loops to finish resume.\n", __func__, __LINE__, 25000 - wait_time_us);
+			pr_info("%s*** PORTSC = %0x\n", __func__, ehci_readl(ehci, status_reg));
+
 			ehci->reset_done[wIndex] = jiffies
 					+ msecs_to_jiffies(20);
 			break;
