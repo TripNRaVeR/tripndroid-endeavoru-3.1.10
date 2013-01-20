@@ -47,6 +47,8 @@
 #include <mach/mc.h>
 #include <linux/nvhost.h>
 #include <mach/latency_allowance.h>
+#include <asm/atomic.h>
+#include <linux/ktime.h>
 
 #include "dc_reg.h"
 #include "dc_config.h"
@@ -57,6 +59,8 @@
 
 #define DC_COM_PIN_OUTPUT_POLARITY1_INIT_VAL	0x01000000
 #define DC_COM_PIN_OUTPUT_POLARITY3_INIT_VAL	0x0
+
+extern  atomic_t update_frame;
 
 static struct fb_videomode tegra_dc_hdmi_fallback_mode = {
 	.refresh = 60,
@@ -1050,6 +1054,37 @@ static void tegra_dc_underflow_handler(struct tegra_dc *dc)
 	print_underflow_info(dc);
 }
 
+#define MIN_FRAME_THRESHOLD_US 16000
+#define MAX_FRAME_THRESHOLD_US 18000
+#define DEFAULT_FRAME_TIME_US 16667
+#define MAX_STATISTIC_COUNT 10000
+
+static ktime_t last_vblank;
+static unsigned long total_frame_time = 0;
+static unsigned long frame_count = 0;
+
+int tegra_dc_get_frame_time(void)
+{
+	if (frame_count == 0)
+		return DEFAULT_FRAME_TIME_US;
+	else
+		return (int)(total_frame_time/frame_count);
+}
+
+void tegra_dc_frame_time_statistic(void)
+{
+	if(frame_count < MAX_STATISTIC_COUNT) {
+		ktime_t now = ktime_get();
+		unsigned long frame_time = ktime_us_delta(now,last_vblank);
+
+		if(frame_time > MIN_FRAME_THRESHOLD_US && frame_time < MAX_FRAME_THRESHOLD_US) {
+				frame_count ++;
+				total_frame_time += frame_time;
+		}
+		last_vblank = now;
+	}
+}
+
 #ifndef CONFIG_TEGRA_FPGA_PLATFORM
 static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 {
@@ -1061,6 +1096,8 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 	}
 
 	if (status & V_BLANK_INT) {
+		tegra_dc_frame_time_statistic();
+
 		/* Sync up windows. */
 		tegra_dc_trigger_windows(dc);
 
@@ -1078,8 +1115,10 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status)
 {
 	/* Schedule any additional bottom-half vblank actvities. */
-	if (status & V_BLANK_INT)
+	if (status & V_BLANK_INT) {
+		tegra_dc_frame_time_statistic();
 		queue_work(system_freezable_wq, &dc->vblank_work);
+	}
 
 	if (status & FRAME_END_INT) {
 		/* Mark the frame_end as complete. */
