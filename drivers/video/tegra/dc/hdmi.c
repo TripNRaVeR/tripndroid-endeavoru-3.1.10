@@ -37,6 +37,7 @@
 #include <mach/clk.h>
 #include <mach/dc.h>
 #include <mach/fb.h>
+#include <linux/cable_detect.h>
 #include <linux/nvhost.h>
 #include <mach/hdmi-audio.h>
 
@@ -49,6 +50,10 @@
 #include "edid.h"
 #include "nvhdcp.h"
 
+extern bool g_bEnterEarlySuspend;
+bool deepsleep = false;
+bool earlysleep = false;
+
 /* datasheet claims this will always be 216MHz */
 #define HDMI_AUDIOCLK_FREQ		216000000
 
@@ -59,10 +64,10 @@
 #define HDMI_ELD_VER_INDEX			0
 #define HDMI_ELD_BASELINE_LEN_INDEX		2
 #define HDMI_ELD_CEA_VER_MNL_INDEX		4
-#define HDMI_ELD_SAD_CNT_CON_TYP_SAI_HDCP_INDEX		5
-#define HDMI_ELD_AUD_SYNC_DELAY_INDEX	6
+#define HDMI_ELD_SAD_CNT_CON_TYP_SAI_HDCP_INDEX	5
+#define HDMI_ELD_AUD_SYNC_DELAY_INDEX		6
 #define HDMI_ELD_SPK_ALLOC_INDEX		7
-#define HDMI_ELD_PORT_ID_INDEX		8
+#define HDMI_ELD_PORT_ID_INDEX			8
 #define HDMI_ELD_MANF_NAME_INDEX		16
 #define HDMI_ELD_PRODUCT_CODE_INDEX		18
 #define HDMI_ELD_MONITOR_NAME_INDEX		20
@@ -1370,31 +1375,18 @@ bool tegra_dc_hdmi_detect_test(struct tegra_dc *dc, unsigned char *edid_ptr)
 
 	err = tegra_edid_get_monspecs_test(hdmi->edid, &specs, edid_ptr);
 	if (err < 0) {
-		/* Check if there's a hard-wired mode, if so, enable it */
-		if (dc->out->n_modes)
-			tegra_dc_enable(dc);
-		else {
-			dev_err(&dc->ndev->dev, "error reading edid\n");
-			goto fail;
-		}
-#ifdef CONFIG_SWITCH
-		hdmi->hpd_switch.state = 0;
-		switch_set_state(&hdmi->hpd_switch, 1);
-#endif
-		dev_info(&dc->ndev->dev, "display detected\n");
-
-		dc->connected = true;
-		tegra_dc_ext_process_hotplug(dc->ndev->id);
-	} else {
-		err = tegra_edid_get_eld(hdmi->edid, &hdmi->eld);
-		if (err < 0) {
-			dev_err(&dc->ndev->dev, "error populating eld\n");
-			goto fail;
-		}
-		hdmi->eld_retrieved = true;
-
-		tegra_dc_hdmi_detect_config(dc, &specs);
+		dev_err(&dc->ndev->dev, "error reading edid\n");
+		goto fail;
 	}
+
+	err = tegra_edid_get_eld(hdmi->edid, &hdmi->eld);
+	if (err < 0) {
+		dev_err(&dc->ndev->dev, "error populating eld\n");
+		goto fail;
+	}
+	hdmi->eld_retrieved = true;
+
+	tegra_dc_hdmi_detect_config(dc, &specs);
 
 	return true;
 
@@ -1419,30 +1411,18 @@ static bool tegra_dc_hdmi_detect(struct tegra_dc *dc)
 
 	err = tegra_edid_get_monspecs(hdmi->edid, &specs);
 	if (err < 0) {
-		if (dc->out->n_modes)
-			tegra_dc_enable(dc);
-		else {
-			dev_err(&dc->ndev->dev, "error reading edid\n");
-			goto fail;
-		}
-#ifdef CONFIG_SWITCH
-		hdmi->hpd_switch.state = 0;
-		switch_set_state(&hdmi->hpd_switch, 1);
-#endif
-		dev_info(&dc->ndev->dev, "display detected\n");
-
-		dc->connected = true;
-		tegra_dc_ext_process_hotplug(dc->ndev->id);
-	} else {
-		err = tegra_edid_get_eld(hdmi->edid, &hdmi->eld);
-		if (err < 0) {
-			dev_err(&dc->ndev->dev, "error populating eld\n");
-			goto fail;
-		}
-		hdmi->eld_retrieved = true;
-
-		tegra_dc_hdmi_detect_config(dc, &specs);
+		dev_err(&dc->ndev->dev, "error reading edid\n");
+		goto fail;
 	}
+
+	err = tegra_edid_get_eld(hdmi->edid, &hdmi->eld);
+	if (err < 0) {
+		dev_err(&dc->ndev->dev, "error populating eld\n");
+		goto fail;
+	}
+	hdmi->eld_retrieved = true;
+
+	tegra_dc_hdmi_detect_config(dc, &specs);
 
 	return true;
 
@@ -1479,6 +1459,11 @@ static irqreturn_t tegra_dc_hdmi_irq(int irq, void *ptr)
 	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
 	unsigned long flags;
 
+	if (g_bEnterEarlySuspend)
+		earlysleep = 1;
+	else
+		earlysleep = deepsleep = 0;
+
 	spin_lock_irqsave(&hdmi->suspend_lock, flags);
 	if (!hdmi->suspended) {
 		__cancel_delayed_work(&hdmi->work);
@@ -1499,7 +1484,9 @@ static void tegra_dc_hdmi_suspend(struct tegra_dc *dc)
 	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
 	unsigned long flags;
 
+#ifndef CONFIG_TEGRA_HDMI_MHL
 	tegra_nvhdcp_suspend(hdmi->nvhdcp);
+#endif
 	spin_lock_irqsave(&hdmi->suspend_lock, flags);
 	hdmi->suspended = true;
 	spin_unlock_irqrestore(&hdmi->suspend_lock, flags);
@@ -1512,6 +1499,7 @@ static void tegra_dc_hdmi_resume(struct tegra_dc *dc)
 
 	spin_lock_irqsave(&hdmi->suspend_lock, flags);
 	hdmi->suspended = false;
+	deepsleep = 1;
 
 	if (tegra_dc_hdmi_hpd(dc))
 		queue_delayed_work(system_nrt_wq, &hdmi->work,
@@ -1521,7 +1509,34 @@ static void tegra_dc_hdmi_resume(struct tegra_dc *dc)
 				   msecs_to_jiffies(30));
 
 	spin_unlock_irqrestore(&hdmi->suspend_lock, flags);
+#ifndef CONFIG_TEGRA_HDMI_MHL
 	tegra_nvhdcp_resume(hdmi->nvhdcp);
+#endif
+}
+
+void hdmi_hdcp_early_suspend(void)
+{
+	struct tegra_dc *dc_hdmi = tegra_dc_get_dc(1);
+	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc_hdmi);
+	tegra_nvhdcp_suspend(hdmi->nvhdcp);
+}
+
+void hdmi_set_hdmi_uevent(int value)
+{
+	struct tegra_dc *dc_hdmi = tegra_dc_get_dc(1);
+	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc_hdmi);
+	switch_set_state(&hdmi->hpd_switch, value);
+}
+
+void hdmi_hdcp_late_resume(void)
+{
+	struct tegra_dc *dc_hdmi = tegra_dc_get_dc(1);
+	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc_hdmi);
+	if(!earlysleep && !deepsleep)
+		hdmi_set_hdmi_uevent(0);
+	tegra_nvhdcp_resume(hdmi->nvhdcp);
+	if(!earlysleep && !deepsleep)
+		hdmi_set_hdmi_uevent(1);
 }
 
 #ifdef CONFIG_SWITCH
@@ -1694,10 +1709,8 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 
 	return 0;
 
-#ifdef CONFIG_TEGRA_NVHDCP
 err_edid_destroy:
 	tegra_edid_destroy(hdmi->edid);
-#endif
 err_free_irq:
 	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
 err_put_clock:
@@ -2010,7 +2023,7 @@ EXPORT_SYMBOL(tegra_hdmi_audio_null_sample_inject);
 int tegra_hdmi_setup_hda_presence()
 {
 	struct tegra_dc_hdmi_data *hdmi = dc_hdmi;
-
+	printk(KERN_INFO "ENTERING tegra_hdmi_setup_hda_presence()");
 	if (!hdmi)
 		return -EAGAIN;
 
@@ -2083,6 +2096,8 @@ static void tegra_dc_hdmi_setup_avi_infoframe(struct tegra_dc *dc, bool dvi)
 	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
 	struct hdmi_avi_infoframe avi;
 
+	tegra_dc_writel(hdmi->dc, 0x00000000, DC_DISP_BORDER_COLOR);
+
 	if (dvi) {
 		tegra_hdmi_writel(hdmi, 0x0,
 				  HDMI_NV_PDISP_HDMI_AVI_INFOFRAME_CTRL);
@@ -2105,6 +2120,8 @@ static void tegra_dc_hdmi_setup_avi_infoframe(struct tegra_dc *dc, bool dvi)
 		} else {
 			avi.m = HDMI_AVI_M_16_9;
 			avi.vic = 3;
+			avi.q = tegra_edid_vcdb_supported(hdmi->edid);
+			tegra_dc_writel(hdmi->dc, 0x00101010, DC_DISP_BORDER_COLOR);
 		}
 	} else if (dc->mode.v_active == 576) {
 		/* CEC modes 17 and 18 differ only by the pysical size of the

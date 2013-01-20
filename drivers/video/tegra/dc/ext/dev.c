@@ -331,13 +331,22 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 			continue;
 
 		win = tegra_dc_get_window(ext->dc, index);
+
+		if (!win)
+			continue;
+
 		ext_win = &ext->win[index];
 
 		if (!(atomic_dec_and_test(&ext_win->nr_pending_flips)) &&
 			(flip_win->attr.flags & TEGRA_DC_EXT_FLIP_FLAG_CURSOR))
 			skip_flip = true;
 
-		if (win->flags & TEGRA_WIN_FLAG_ENABLED) {
+		if (skip_flip)
+			old_handle = flip_win->handle[TEGRA_DC_Y];
+		else
+			old_handle = ext_win->cur_handle[TEGRA_DC_Y];
+
+		if (old_handle) {
 			int j;
 			for (j = 0; j < TEGRA_DC_NUM_PLANES; j++) {
 				if (skip_flip)

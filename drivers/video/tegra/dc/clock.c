@@ -26,6 +26,7 @@
 #include "dc_reg.h"
 #include "dc_priv.h"
 
+#include <linux/delay.h>
 unsigned long tegra_dc_pclk_round_rate(struct tegra_dc *dc, int pclk)
 {
 	unsigned long rate;
@@ -138,9 +139,15 @@ void tegra_dc_setup_clk(struct tegra_dc *dc, struct clk *clk)
 		}
 
 		rate = dc->mode.pclk * dc->shift_clk_div * 2;
-		if (rate != clk_get_rate(base_clk))
+		if (rate != clk_get_rate(base_clk)) {
+			if (dc->suspend_status == DSI_SUSPEND_FULL) {
+				disable_irq(dc->irq);
+				mdelay(2);
+			}
 			clk_set_rate(base_clk, rate);
-
+			if (dc->suspend_status == DSI_SUSPEND_FULL)
+				enable_irq(dc->irq);
+		}
 		if (clk_get_parent(clk) != parent_clk)
 			clk_set_parent(clk, parent_clk);
 	}

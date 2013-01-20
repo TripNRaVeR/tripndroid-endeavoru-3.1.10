@@ -74,8 +74,8 @@ static int get_output_edid(struct tegra_dc_ext_control_output_edid *edid)
 		return -EINVAL;
 
 	dc = tegra_dc_get_dc(edid->handle);
-
-	dc_edid = tegra_dc_get_edid(dc);
+	if (dc)
+		dc_edid = tegra_dc_get_edid(dc);
 	if (IS_ERR(dc_edid))
 		return PTR_ERR(dc_edid);
 

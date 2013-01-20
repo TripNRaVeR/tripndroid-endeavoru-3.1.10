@@ -198,6 +198,7 @@ struct tegra_dsi_out {
 	struct tegra_dsi_cmd	*dsi_cabc_still_mode;
 
 	u16		n_cabc_cmd;
+	u8		impedance_para;
 };
 
 enum {
@@ -583,6 +584,8 @@ struct tegra_dc_pwm_params {
 void tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg);
 
 int tegra_dsi_send_panel_short_cmd(struct tegra_dc *dc, u8 *pdata, u8 data_len);
+
+void tegra_dc_host_trigger(struct tegra_dc *dc);
 
 int tegra_dc_update_csc(struct tegra_dc *dc, int win_index);
 

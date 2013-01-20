@@ -88,6 +88,7 @@ struct tegra_dc_out_ops {
 	/* mode filter. to provide a list of supported modes*/
 	bool (*mode_filter)(const struct tegra_dc *dc,
 			struct fb_videomode *mode);
+	void (*send_cmd)(struct tegra_dc *dc, struct tegra_dsi_cmd *cmd, int n);
 };
 
 struct tegra_dc {
@@ -122,7 +123,8 @@ struct tegra_dc {
 
 	struct mutex			lock;
 	struct mutex			one_shot_lock;
-
+	struct mutex			host_lock;
+	struct mutex			vsync_lock;
 	struct resource			*fb_mem;
 	struct tegra_fb_info		*fb;
 
@@ -164,6 +166,8 @@ struct tegra_dc {
 	u32				one_shot_delay_ms;
 	struct delayed_work		one_shot_work;
 	bool 				isyuv_lasttime;
+
+	u32 suspend_status;
 };
 
 #define print_mode_info(dc, mode) do {					\

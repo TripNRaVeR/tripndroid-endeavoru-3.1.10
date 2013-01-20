@@ -81,6 +81,9 @@
 
 #define DSI_HOST_IDLE_PERIOD		1000
 
+#define NUM_DSI_INIT_SEQ_DATA 8
+#define NUM_DSI_INIT_SEQ_DATA_BYTE 16
+
 static bool enable_read_debug;
 module_param(enable_read_debug, bool, 0644);
 MODULE_PARM_DESC(enable_read_debug,
@@ -308,8 +311,8 @@ static void tegra_dc_dsi_idle_work(struct work_struct *work);
 inline unsigned long tegra_dsi_readl(struct tegra_dc_dsi_data *dsi, u32 reg)
 {
 	unsigned long ret;
-
-	BUG_ON(!nvhost_module_powered_ext(nvhost_get_parent(dsi->dc->ndev)));
+	if (nvhost_get_parent(dsi->dc->ndev))
+		BUG_ON(!nvhost_module_powered_ext(nvhost_get_parent(dsi->dc->ndev)));
 	ret = readl(dsi->base + reg * 4);
 	trace_printk("readl %p=%#08lx\n", dsi->base + reg * 4, ret);
 	return ret;
@@ -318,7 +321,8 @@ EXPORT_SYMBOL(tegra_dsi_readl);
 
 inline void tegra_dsi_writel(struct tegra_dc_dsi_data *dsi, u32 val, u32 reg)
 {
-	BUG_ON(!nvhost_module_powered_ext(nvhost_get_parent(dsi->dc->ndev)));
+	if (nvhost_get_parent(dsi->dc->ndev))
+		BUG_ON(!nvhost_module_powered_ext(nvhost_get_parent(dsi->dc->ndev)));
 	trace_printk("writel %p=%#08x\n", dsi->base + reg * 4, val);
 	writel(val, dsi->base + reg * 4);
 }
@@ -446,24 +450,64 @@ static inline void tegra_dsi_clk_disable(struct tegra_dc_dsi_data *dsi)
 	}
 }
 
+#define DSI_RETRY 5
+
 static int tegra_dsi_syncpt(struct tegra_dc_dsi_data *dsi)
 {
 	u32 val;
 	int ret;
+	int retry = 0;
 
 	ret = 0;
 
-	dsi->syncpt_val = nvhost_syncpt_read_ext(dsi->dc->ndev, dsi->syncpt_id);
+	//TODO: Use retry instead wait sync point for 2 seconds
+	do {
+		dsi->syncpt_val = nvhost_syncpt_read_ext(dsi->dc->ndev, dsi->syncpt_id);
 
-	val = DSI_INCR_SYNCPT_COND(OP_DONE) |
-		DSI_INCR_SYNCPT_INDX(dsi->syncpt_id);
-	tegra_dsi_writel(dsi, val, DSI_INCR_SYNCPT);
+		val = DSI_INCR_SYNCPT_COND(OP_DONE) |
+			DSI_INCR_SYNCPT_INDX(dsi->syncpt_id);
+		tegra_dsi_writel(dsi, val, DSI_INCR_SYNCPT);
 
-	/* TODO: Use interrupt rather than polling */
-	ret = nvhost_syncpt_wait_timeout_ext(dsi->dc->ndev, dsi->syncpt_id,
-		dsi->syncpt_val + 1, MAX_SCHEDULE_TIMEOUT, NULL);
-	if (ret < 0) {
-		dev_err(&dsi->dc->ndev->dev, "DSI sync point failure\n");
+		/* TODO: Use interrupt rather than polling */
+		//TODO: workaround to avoid DSI syncpt hung during booting or suspend/resume, and set default timeout as 2 seconds(change to 20ms)
+		ret = nvhost_syncpt_wait_timeout_ext(dsi->dc->ndev, dsi->syncpt_id,
+			dsi->syncpt_val + 1, msecs_to_jiffies(20), NULL);
+		retry ++;
+	} while (ret == -EAGAIN && retry < DSI_RETRY);
+
+
+	if (retry > 1 && retry <= DSI_RETRY)
+		printk(KERN_INFO "[DISP]DSI retry times:%d\n",retry);
+
+	if (ret == -EAGAIN) {
+		pr_info("%s(%d) val %d ret= %d, syncpt timeout, skip this time\n", __func__, __LINE__, dsi->syncpt_val, ret);
+		printk(KERN_ERR "DSI status init is %d\n",       dsi->status.init);
+		printk(KERN_ERR "DSI status lphs is %d\n",       dsi->status.lphs);
+		printk(KERN_ERR "DSI status vtype is %d\n",      dsi->status.vtype);
+		printk(KERN_ERR "DSI status driven is %d\n",     dsi->status.driven);
+		printk(KERN_ERR "DSI status clk_out is %d\n",    dsi->status.clk_out);
+		printk(KERN_ERR "DSI status clk_mode is %d\n",   dsi->status.clk_mode);
+		printk(KERN_ERR "DSI status clk_burst is %d\n",  dsi->status.clk_burst);
+		printk(KERN_ERR "DSI status lp_op is %d\n",      dsi->status.lp_op);
+		printk(KERN_ERR "DSI status dc_stream is %d\n",  dsi->status.dc_stream);
+		printk(KERN_ERR "DSI syncpt (val, reg) = (%d, %d)\n",
+			dsi->syncpt_val, nvhost_syncpt_read_ext(dsi->dc->ndev, dsi->syncpt_id));
+		dump_stack();
+	}
+	else if (ret < 0) {
+		printk(KERN_ERR "DSI sync point failure ret %d\n", ret);
+		printk(KERN_ERR "DSI status init is %d\n",       dsi->status.init);
+		printk(KERN_ERR "DSI status lphs is %d\n",       dsi->status.lphs);
+		printk(KERN_ERR "DSI status vtype is %d\n",      dsi->status.vtype);
+		printk(KERN_ERR "DSI status driven is %d\n",     dsi->status.driven);
+		printk(KERN_ERR "DSI status clk_out is %d\n",    dsi->status.clk_out);
+		printk(KERN_ERR "DSI status clk_mode is %d\n",   dsi->status.clk_mode);
+		printk(KERN_ERR "DSI status clk_burst is %d\n",  dsi->status.clk_burst);
+		printk(KERN_ERR "DSI status lp_op is %d\n",      dsi->status.lp_op);
+		printk(KERN_ERR "DSI status dc_stream is %d\n",  dsi->status.dc_stream);
+		printk(KERN_ERR "DSI syncpt (val, reg) = (%d, %d)\n",
+			dsi->syncpt_val,nvhost_syncpt_read_ext(dsi->dc->ndev, dsi->syncpt_id));
+		dump_stack();
 		goto fail;
 	}
 
@@ -1665,11 +1709,17 @@ static void tegra_dsi_pad_calibration(struct tegra_dc_dsi_data *dsi)
 {
 	u32 val;
 
-	val =	DSI_PAD_CONTROL_PAD_LPUPADJ(0x1) |
-		DSI_PAD_CONTROL_PAD_LPDNADJ(0x1) |
-		DSI_PAD_CONTROL_PAD_PREEMP_EN(0x1) |
+	if (dsi->info.impedance_para)
+		val =	DSI_PAD_CONTROL_PAD_LPUPADJ(dsi->info.impedance_para) |
+			DSI_PAD_CONTROL_PAD_LPDNADJ(dsi->info.impedance_para);
+	else
+		val =   DSI_PAD_CONTROL_PAD_LPUPADJ(0x1) |
+			DSI_PAD_CONTROL_PAD_LPDNADJ(0x1);
+
+	val |= 	DSI_PAD_CONTROL_PAD_PREEMP_EN(0x1) |
 		DSI_PAD_CONTROL_PAD_SLEWDNADJ(0x6) |
 		DSI_PAD_CONTROL_PAD_SLEWUPADJ(0x6);
+
 	if (!dsi->ulpm) {
 		val |=	DSI_PAD_CONTROL_PAD_PDIO(0) |
 			DSI_PAD_CONTROL_PAD_PDIO_CLK(0) |
@@ -2225,6 +2275,7 @@ static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
 			if (err < 0)
 				break;
 		}
+		udelay(100);
 	}
 	return err;
 }
@@ -3044,7 +3095,7 @@ static void _tegra_dc_dsi_init(struct tegra_dc *dc)
 static int tegra_dc_dsi_cp_p_cmd(struct tegra_dsi_cmd *src,
 					struct tegra_dsi_cmd *dst, u16 n_cmd)
 {
-	u16 i;
+	u16 i,j;
 	u16 len;
 
 	memcpy(dst, src, sizeof(*dst) * n_cmd);
@@ -3062,19 +3113,19 @@ static int tegra_dc_dsi_cp_p_cmd(struct tegra_dsi_cmd *src,
 	return 0;
 
 free_cmd_pdata:
-	for (--i; i >= 0; i--)
-		if (dst[i].pdata)
-			kfree(dst[i].pdata);
+	for (j=0; j < i; j++)
+		if (dst[j].pdata)
+			kfree(dst[j].pdata);
 	return -ENOMEM;
 }
 
 static int tegra_dc_dsi_cp_info(struct tegra_dc_dsi_data *dsi,
 					struct tegra_dsi_out *p_dsi)
 {
-	struct tegra_dsi_cmd *p_init_cmd;
+	struct tegra_dsi_cmd *p_init_cmd = NULL;
 	struct tegra_dsi_cmd *p_early_suspend_cmd = NULL;
 	struct tegra_dsi_cmd *p_late_resume_cmd = NULL;
-	struct tegra_dsi_cmd *p_suspend_cmd;
+	struct tegra_dsi_cmd *p_suspend_cmd = NULL;
 	int err;
 
 	if (p_dsi->n_data_lanes > MAX_DSI_DATA_LANES)
@@ -3185,9 +3236,11 @@ static int tegra_dc_dsi_cp_info(struct tegra_dc_dsi_data *dsi,
 err_free:
 	kfree(p_suspend_cmd);
 err_free_p_late_resume_cmd:
-	kfree(p_late_resume_cmd);
+	if(p_late_resume_cmd)
+		kfree(p_late_resume_cmd);
 err_free_p_early_suspend_cmd:
-	kfree(p_early_suspend_cmd);
+	if(p_early_suspend_cmd)
+		kfree(p_early_suspend_cmd);
 err_free_init_cmd:
 	kfree(p_init_cmd);
 	return err;
@@ -3360,7 +3413,9 @@ static int tegra_dsi_deep_sleep(struct tegra_dc *dc,
 	switch (suspend_aggr) {
 	case DSI_SUSPEND_FULL:
 		/* Suspend DSI panel */
+		dc->suspend_status = DSI_SUSPEND_FULL;
 		err = tegra_dsi_set_to_lp_mode(dc, dsi, DSI_LP_OP_WRITE);
+		dc->suspend_status = DSI_NO_SUSPEND;
 		if (err < 0) {
 			dev_err(&dc->ndev->dev,
 			"DSI failed to go to LP mode\n");
