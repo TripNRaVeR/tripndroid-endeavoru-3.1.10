@@ -1187,7 +1187,7 @@ static long baseband_usb_chr_ioctl(struct file *file, unsigned int cmd,
 		flush_workqueue(baseband_usb_chr->ipc->workqueue);
 		return 0;
 	case FIONREAD:
-		pr_debug("FIONREAD\n");
+		/* pr_debug("FIONREAD\n"); */
 		/* return count of available rx bytes */
 		{
 			int __user *p = (int __user *) arg;
@@ -1197,7 +1197,9 @@ static long baseband_usb_chr_ioctl(struct file *file, unsigned int cmd,
 		}
 		return 0;
 	default:
-		pr_err("unsupported ioctl cmd %x\n", cmd);
+		if (cmd == 0x5418)
+			pr_info("baseband_usb_chr_ioctl: unsupported ioctl cmd %x\n", cmd);
+
 		return 0;
 	}
 	return -ENODEV;
