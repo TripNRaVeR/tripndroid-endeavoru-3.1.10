@@ -108,6 +108,7 @@ static struct regulator_consumer_supply tps80031_smps3_supply_common[] = {
 static struct regulator_consumer_supply tps80031_smps4_supply_a02[] = {
 	REGULATOR_SUPPLY("vddio_sdmmc_2v85", NULL),
 	REGULATOR_SUPPLY("pwrdet_sdmmc3", NULL),
+	REGULATOR_SUPPLY("vmmc", NULL),
 };
 
 static struct regulator_consumer_supply tps80031_vana_supply_common[] = {
