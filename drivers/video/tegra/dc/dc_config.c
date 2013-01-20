@@ -209,7 +209,7 @@ int tegra_dc_feature_has_scaling(struct tegra_dc *dc, int win_idx)
 	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_SCALE);
 
 	for (i = 0; i < ENTRY_SIZE; i++)
-		if (addr[i] != 1)
+		if (addr && addr[i] != 1)
 			return 1;
 	return 0;
 }
@@ -217,8 +217,7 @@ int tegra_dc_feature_has_scaling(struct tegra_dc *dc, int win_idx)
 int tegra_dc_feature_has_tiling(struct tegra_dc *dc, int win_idx)
 {
 	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_TILED);
-
-	return addr[TILED_LAYOUT];
+	return addr ? addr[TILED_LAYOUT] : -EINVAL;
 }
 
 int tegra_dc_feature_has_filter(struct tegra_dc *dc, int win_idx, int operation)
@@ -226,9 +225,9 @@ int tegra_dc_feature_has_filter(struct tegra_dc *dc, int win_idx, int operation)
 	long *addr = tegra_dc_parse_feature(dc, win_idx, operation);
 
 	if (operation == HAS_V_FILTER)
-		return addr[V_FILTER];
+		return addr ? addr[V_FILTER] : -EINVAL;
 	else
-		return addr[H_FILTER];
+		return addr ? addr[H_FILTER] : -EINVAL;
 }
 
 void tegra_dc_feature_register(struct tegra_dc *dc)

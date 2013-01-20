@@ -2113,7 +2113,7 @@ struct nvhost_driver tegra_dc_driver = {
 #ifndef MODULE
 static int __init parse_disp_params(char *options, struct tegra_dc_mode *mode)
 {
-	int i, params[11];
+	int i, params[11] = {0};
 	char *p;
 
 	for (i = 0; i < ARRAY_SIZE(params); i++) {

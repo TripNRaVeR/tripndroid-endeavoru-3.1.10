@@ -203,7 +203,7 @@ static inline int nvhdcp_i2c_write8(struct tegra_nvhdcp *nvhdcp, u8 reg, u8 val)
 static inline int nvhdcp_i2c_read16(struct tegra_nvhdcp *nvhdcp,
 					u8 reg, u16 *val)
 {
-	u8 buf[2];
+	u8 buf[2] = {};
 	int e;
 
 	e = nvhdcp_i2c_read(nvhdcp, reg, sizeof buf, buf);
@@ -218,7 +218,7 @@ static inline int nvhdcp_i2c_read16(struct tegra_nvhdcp *nvhdcp,
 
 static int nvhdcp_i2c_read40(struct tegra_nvhdcp *nvhdcp, u8 reg, u64 *val)
 {
-	u8 buf[5];
+	u8 buf[5] = {};
 	int e, i;
 	u64 n;
 
@@ -759,7 +759,7 @@ static int verify_link(struct tegra_nvhdcp *nvhdcp, bool wait_ri)
 static int get_repeater_info(struct tegra_nvhdcp *nvhdcp)
 {
 	int e, retries;
-	u8 b_caps;
+	u8 b_caps = 0;
 	u16 b_status;
 
 	nvhdcp_vdbg("repeater found:fetching repeater info\n");
@@ -829,7 +829,7 @@ static void nvhdcp_downstream_worker(struct work_struct *work)
 		container_of(to_delayed_work(work), struct tegra_nvhdcp, work);
 	struct tegra_dc_hdmi_data *hdmi = nvhdcp->hdmi;
 	int e;
-	u8 b_caps;
+	u8 b_caps = 0;
 	u32 tmp;
 	u32 res;
 
