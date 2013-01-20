@@ -52,7 +52,11 @@ MODULE_LICENSE("GPL");
  */
 static int max_intfs = 2;	/* default number of interfaces */
 
+#ifdef CONFIG_MACH_ENDEAVORU
+static const unsigned long USB_NET_RAW_IP_INTF[MAX_INTFS] = { 3, 5, 7, 11, 13};
+#else
 static const unsigned long USB_NET_RAW_IP_INTF[MAX_INTFS] = { 3, 5, 9, 11, 13};
+#endif
 unsigned long usb_net_raw_ip_rx_debug;
 unsigned long usb_net_raw_ip_tx_debug;
 
