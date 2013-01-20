@@ -2987,6 +2987,24 @@ static void tegra_dc_dsi_enable(struct tegra_dc *dc)
 			goto fail;
 		}
 
+		if ( dsi->info.osc_off_cmd ) {
+			err = tegra_dsi_send_panel_cmd(dc, dsi, dsi->info.osc_off_cmd,
+								dsi->info.n_osc_off_cmd);
+			if (err < 0) {
+				dev_err(&dc->ndev->dev,
+					"dsi: error while sending dsi init cmd\n");
+				goto fail;
+			}
+
+			err = tegra_dsi_send_panel_cmd(dc, dsi, dsi->info.osc_on_cmd,
+								dsi->info.n_osc_on_cmd);
+			if (err < 0) {
+				dev_err(&dc->ndev->dev,
+					"dsi: error while sending dsi init cmd\n");
+				goto fail;
+			}
+		}
+
 		err = tegra_dsi_send_panel_cmd(dc, dsi, dsi->info.dsi_init_cmd,
 						dsi->info.n_init_cmd);
 		if (err < 0) {
