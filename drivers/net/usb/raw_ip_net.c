@@ -50,7 +50,11 @@ MODULE_LICENSE("GPL");
  * pass kernel module parameter.
  * e.g. insmod raw_ip_net.ko max_intfs=5
  */
+#ifdef CONFIG_MACH_ENDEAVORU
+static int max_intfs = 3;	/* default number of interfaces */
+#else
 static int max_intfs = 2;	/* default number of interfaces */
+#endif
 
 #ifdef CONFIG_MACH_ENDEAVORU
 static const unsigned long USB_NET_RAW_IP_INTF[MAX_INTFS] = { 3, 5, 7, 11, 13};
