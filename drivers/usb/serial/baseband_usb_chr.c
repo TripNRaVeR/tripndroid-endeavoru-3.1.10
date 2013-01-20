@@ -337,7 +337,9 @@ static ssize_t baseband_ipc_file_read(struct baseband_ipc *ipc,
 	}
 
 	/* acquire rx buffer semaphores */
+#ifndef CONFIG_MACH_ENDEAVORU
 retry:
+#endif
 	if (down_interruptible(&ipc->buf_sem)) {
 		pr_err("baseband_ipc_file_read - "
 			"cannot acquire buffer semaphore\n");
@@ -395,6 +397,7 @@ retry:
 
 	/* wait for rx buffer available */
 	if (!read_count) {
+#ifndef CONFIG_MACH_ENDEAVORU
 		if (wait_event_interruptible(ipc->rx.wait,
 			!list_empty(&ipc->rx.buf))) {
 			pr_err("baseband_ipc_file_read - "
@@ -402,6 +405,7 @@ retry:
 			return -ERESTARTSYS;
 		}
 		goto retry;
+#endif
 	}
 
 	return read_count;
