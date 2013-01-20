@@ -1089,7 +1089,7 @@ void tegra_dc_frame_time_statistic(void)
 static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 {
 	/* pending user vblank, so wakeup */
-	if ((status & (V_BLANK_INT | MSF_INT)) &&
+	if ((status & MSF_INT) &&
 	    (dc->out->user_needs_vblank)) {
 		dc->out->user_needs_vblank = false;
 		complete(&dc->out->user_vblank_comp);
