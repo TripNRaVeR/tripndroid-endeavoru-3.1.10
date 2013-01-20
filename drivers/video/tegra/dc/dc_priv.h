@@ -163,6 +163,7 @@ struct tegra_dc {
 	struct delayed_work		underflow_work;
 	u32				one_shot_delay_ms;
 	struct delayed_work		one_shot_work;
+	bool 				isyuv_lasttime;
 };
 
 #define print_mode_info(dc, mode) do {					\

@@ -193,6 +193,11 @@ struct tegra_dsi_out {
 	u32		burst_mode_freq_khz;
 
 	struct dsi_phy_timing_ns phy_timing;
+
+	struct tegra_dsi_cmd	*dsi_cabc_moving_mode;
+	struct tegra_dsi_cmd	*dsi_cabc_still_mode;
+
+	u16		n_cabc_cmd;
 };
 
 enum {
@@ -377,6 +382,8 @@ struct tegra_dc_out {
 	unsigned		n_out_sel_configs;
 	bool			user_needs_vblank;
 	struct completion	user_vblank_comp;
+
+	int 			video_min_bw;
 
 	int	(*enable)(void);
 	int	(*postpoweron)(void);

@@ -199,6 +199,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 	unsigned long update_mask = GENERAL_ACT_REQ;
 	unsigned long val;
 	bool update_blend = false;
+	bool is_yuvp = 0;
 	int i;
 
 	dc = windows[0]->dc;
@@ -427,6 +428,32 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 	mutex_unlock(&dc->lock);
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
 		mutex_unlock(&dc->one_shot_lock);
+
+	for (i = 0; i < n; i++) {
+		struct tegra_dc_win *win = windows[i];
+		bool yuvp = tegra_dc_is_yuv_planar(win->fmt);
+		is_yuvp |= yuvp;
+	}
+
+	if (dc->ndev->id == 0) {
+		struct tegra_dc_out *out = dc->out;
+		struct tegra_dsi_out *dsi = out->dsi;
+		struct tegra_dsi_cmd *cur = NULL;
+		int n = dsi->n_cabc_cmd;
+		if (out && dsi && dc->out_ops && dc->out_ops->send_cmd) {
+			if (is_yuvp && !dc->isyuv_lasttime) {
+				cur = dsi->dsi_cabc_still_mode;
+				dc->isyuv_lasttime = is_yuvp;
+			}
+			else if (!is_yuvp && dc->isyuv_lasttime) {
+				cur = dsi->dsi_cabc_moving_mode;
+				dc->isyuv_lasttime = is_yuvp;
+			}
+			if (cur) {
+				dc->out_ops->send_cmd(dc, cur, n);
+			}
+		}
+	}
 
 	return 0;
 }
