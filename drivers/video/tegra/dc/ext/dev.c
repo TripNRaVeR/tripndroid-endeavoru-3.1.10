@@ -274,7 +274,7 @@ static int tegra_dc_ext_set_windowattr(struct tegra_dc_ext *ext,
 	return 0;
 }
 
-static void (*flip_callback)(void);
+static int (*flip_callback)(void);
 static spinlock_t flip_callback_lock;
 static bool init_tegra_dc_flip_callback_called;
 
@@ -287,7 +287,7 @@ static int __init init_tegra_dc_flip_callback(void)
 
 pure_initcall(init_tegra_dc_flip_callback);
 
-int tegra_dc_set_flip_callback(void (*callback)(void))
+int tegra_dc_set_flip_callback(int (*callback)(void))
 {
 	WARN_ON(!init_tegra_dc_flip_callback_called);
 
