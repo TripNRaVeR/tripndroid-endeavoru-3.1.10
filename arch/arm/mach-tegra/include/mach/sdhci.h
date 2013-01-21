@@ -71,14 +71,14 @@ static int inline enable_gpio_config(enum tegra_pingroup pg, int pin, const char
 		return -1;
 	}
 	tegra_pinmux_set_pullupdown(pg, pupd);
-	tegra_gpio_enable(pin);
+//	tegra_gpio_enable(pin);
 	return 0;
 }
 
 static void inline disable_gpio_config(enum tegra_pingroup pg, int pin, enum tegra_pullupdown pupd)
 {
 	tegra_pinmux_set_pullupdown(pg, pupd);
-	tegra_gpio_disable(pin);
+//	tegra_gpio_disable(pin);
 	gpio_free(pin);
 }
 #endif
