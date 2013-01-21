@@ -76,7 +76,7 @@ static struct regulator *enterprise_hdmi_pll;
 #define enterprise_lcd_swp_pl		TEGRA_GPIO_PH2		
 
 #define enterprise_lcd_te		TEGRA_GPIO_PJ1
-#define enterprise_dsi_panel_reset	TEGRA_GPIO_PN6
+#define enterprise_dsi_panel_reset	TEGRA_GPIO_PW0
 
 struct workqueue_struct *bkl_wq;
 struct work_struct bkl_work;
