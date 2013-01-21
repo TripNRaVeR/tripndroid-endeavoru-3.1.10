@@ -25,41 +25,67 @@
 #ifndef __HTC_HEADER_H
 #define __HTC_HEADER_H
 
-#define BIT0                            0x00000001
-#define BIT1                            0x00000002
-#define BIT8                            0x00000100
-#define BIT10                           0x00000400
-#define BIT11                           0x00000800
+/* panel stuff */
+#ifdef CONFIG_MACH_ENDEAVORU
+#define BL_SHIFT	16
+#define BL_MASK		(0x7 << BL_SHIFT)
 
-#define DBG_USBCHR_L4 BIT11
-#define DBG_USBCHR_L3 BIT10
-#define DBG_USBCHR_L1 BIT8
+#define BL_MIPI		(4 << BL_SHIFT)
+#define BL_CPU		(6 << BL_SHIFT)
 
-#define DBG_ACM1_RW BIT1
-#define DBG_ACM0_RW BIT0
+#define IF_SHIFT	19
+#define IF_MASK		(0x7 << IF_SHIFT)
 
-// used by cdc-acm
-#define PRINTRTC  do {   \
-	struct timespec ts;  \
-	struct rtc_time tm;  \
-						 \
-	getnstimeofday(&ts); \
-	rtc_time_to_tm(ts.tv_sec, &tm); \
-	printk(" At (%d-%02d-%02d %02d:%02d:%02d.%09lu)\n", \
-	tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, \
-	tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec); \
-} while (0)
+#define IF_MIPI		(2 << IF_SHIFT)
 
-#define PRINTRTC_PRE  do {   \
-    struct timespec ts;  \
-    struct rtc_time tm;  \
-                         \
-    getnstimeofday(&ts); \
-    rtc_time_to_tm(ts.tv_sec, &tm); \
-    printk("[RIL] At (%d-%02d-%02d %02d:%02d:%02d.%09lu) ", \
-    tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, \
-    tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec); \
-} while (0)
+#define DEPTH_SHIFT	22
+#define DEPTH_MASK	(0x7 << DEPTH_SHIFT)
+
+#define DEPTH_RGB565	(0 << DEPTH_SHIFT)
+#define DEPTH_RGB666	(1 << DEPTH_SHIFT)
+#define DEPTH_RGB888	(2 << DEPTH_SHIFT)
+
+#define REV_SHIFT	25
+#define REV_MASK	(0x7 << REV_SHIFT)
+
+#define REV_0		(0 << REV_SHIFT)
+#define REV_1		(1 << REV_SHIFT)
+#define REV_2		(2 << REV_SHIFT)
+
+#define BKL_CAB_SHIFT	28
+#define BKL_CAB_MASK	(0x3 << BKL_CAB_SHIFT)
+
+#define BKL_CAB_OFF	(0 << BKL_CAB_SHIFT)
+#define BKL_CAB_LOW	(1 << BKL_CAB_SHIFT)
+#define BKL_CAB_DEF	(2 << BKL_CAB_SHIFT)
+#define BKL_CAB_HIGH	(3 << BKL_CAB_SHIFT)
+
+#define PANEL_ID_NONE		(0x0)
+
+#define	PANEL_ID_START		0x0F
+
+#define PANEL_ID(pro, ven, ic) PANEL_ID_##pro##_##ven##_##ic
+
+#define PANEL_SHIFT	8
+#define PANEL_MASK(id)  (id & 0xFFFFFF00)
+#define PROJ_MASK(id)	(id & 0xFF)
+
+#define PROJ_ENRU       0x01
+
+#define PANEL_ID_SHARP_HX_XA		((0x39 << PANEL_SHIFT) | BL_CPU | IF_MIPI | DEPTH_RGB888 | REV_0)
+#define PANEL_ID_SHARP_HX		((0x40 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP_NT_C1		((0x41 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SONY_NT_C1		((0x42 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP_HX_C3		((0x43 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP_NT_C2		((0x44 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SONY_NT_C2		((0x45 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP_HX_C4		((0x46 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP_NT_C2_9A 	((0x47 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SHARP			((0x48 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+#define PANEL_ID_SONY			((0x49 << PANEL_SHIFT) | BL_MIPI | IF_MIPI | DEPTH_RGB888)
+
+#define	PANEL_ID_END		0xFFFF
+#endif
 
 // display debug
 #define REGULATOR_GET(reg, name) \
