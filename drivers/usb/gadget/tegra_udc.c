@@ -92,7 +92,6 @@ static const u8 tegra_udc_test_packet[53] = {
 struct tegra_udc *the_udc;
 extern int USB_disabled;
 
-static int reset_queues_mute(struct tegra_udc *udc);
 #define IO_USB_BASE   0x7D000000
 #define UTMIP_HSRX_CFG1		0x814
 #define UTMIP_HS_SYNC_START_DLY(x)	(((x) & 0x1f) << 1)
@@ -2085,22 +2084,6 @@ static int reset_queues(struct tegra_udc *udc)
 	return 0;
 }
 
-/* Clear up all ep queues */
-static int reset_queues_mute(struct tegra_udc *udc)
-{
-	u8 pipe;
-	for (pipe = 0; pipe < udc->max_pipes; pipe++)
-		udc_reset_ep_queue(udc, pipe);
-
-	/* report disconnect; the driver is already quiesced */
-	spin_unlock(&udc->lock);
-	if (udc->driver && udc->driver->mute_disconnect)
-		udc->driver->mute_disconnect(&udc->gadget);
-	spin_lock(&udc->lock);
-
-	return 0;
-}
-
 /* Process reset interrupt */
 static void reset_irq(struct tegra_udc *udc)
 {
@@ -2148,8 +2131,7 @@ static void reset_irq(struct tegra_udc *udc)
 	 * is not set. Reset all the queues, include XD, dTD, EP queue
 	 * head and TR Queue */
 	VDBG("Bus reset");
-	/* reset_queues(udc); */
-	reset_queues_mute(udc);
+	reset_queues(udc);
 	udc->usb_state = USB_STATE_DEFAULT;
 }
 

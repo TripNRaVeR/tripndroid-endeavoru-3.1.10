@@ -40,7 +40,7 @@
 
 #include <mach/board_htc.h>
 
-#define USB_PHY_WAKEUP		0x408
+#define  USB_PHY_WAKEUP		0x408
 #define  USB_ID_INT_EN		(1 << 0)
 #define  USB_ID_INT_STATUS	(1 << 1)
 #define  USB_ID_STATUS		(1 << 2)
@@ -71,7 +71,7 @@ struct tegra_otg_data {
 	bool clk_enabled;
 	bool interrupt_mode;
 	bool builtin_host;
-	bool suspended
+	bool suspended;
 };
 
 static struct tegra_otg_data *tegra_clone;
@@ -87,15 +87,11 @@ enum {
     HTC_MODE_RUNNING
 };
 
-#if defined(CONFIG_CABLE_DETECT_ACCESSORY)
-extern void cable_detection_queue_recovery_host_work(time);
-#endif
-
 #if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
 void usb_host_status_notifier_func(int isEnable)
 {
 	unsigned long val;
-	USBH_INFO("%s %d", __func__, isEnable);
+
 	if (isEnable) {
 		enable_interrupt(tegra_clone, false);
 		tegra_change_otg_state(tegra_clone, OTG_STATE_A_SUSPEND);
