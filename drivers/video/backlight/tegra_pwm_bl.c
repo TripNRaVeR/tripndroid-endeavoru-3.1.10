@@ -48,9 +48,7 @@ static ssize_t store(struct device *dev,
 	switch (PANEL_MASK(g_panel_id)) {
 		case PANEL_ID_SHARP_HX_C3:
 		case PANEL_ID_SHARP_HX_C4:
-		case PANEL_ID_SHARP_HX_C5:
 		case PANEL_ID_SHARP_HX:
-		case PANEL_ID_SHARP_HX_43:
 			enhance_on[0] = 0xE3;
 			enhance_on[1] = 0x01;
 			enhance_off[0] = 0xE3;
