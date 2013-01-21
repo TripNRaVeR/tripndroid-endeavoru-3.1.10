@@ -357,7 +357,6 @@ static int gpio_o_l_uart(int gpio, char* name)
 	}
 	return ret = 0;
 
-	tegra_gpio_enable(gpio);
 	gpio_export(gpio, true);
 }
 
@@ -367,10 +366,6 @@ void modem_on_for_uart_config(void)
 	if(uart_pin_pull_state==0){
 	// if uart pin pull low, then we put back to normal
 	pr_debug(MODULE_NAME "%s tegra_gpio_disable for UART\n", __func__);
-	tegra_gpio_disable(TEGRA_GPIO_PJ7);
-	tegra_gpio_disable(TEGRA_GPIO_PK7);
-	tegra_gpio_disable(TEGRA_GPIO_PB0);
-	tegra_gpio_disable(TEGRA_GPIO_PB1);
 	uart_pin_pull_state=1; // set back to UART
 	}
 }
