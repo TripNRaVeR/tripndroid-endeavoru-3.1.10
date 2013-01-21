@@ -36,7 +36,6 @@
 #include <mach/irqs.h>
 #include <mach/iomap.h>
 #include <mach/dc.h>
-#include <mach/panel_id.h>
 #include <mach/board_htc.h>
 #include <mach/tegra_fb.h>
 #include <mach/smmu.h>
