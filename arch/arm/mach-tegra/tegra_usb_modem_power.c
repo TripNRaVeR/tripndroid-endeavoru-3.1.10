@@ -249,8 +249,6 @@ static int mdm_init(struct tegra_usb_modem *modem, struct platform_device *pdev)
 		if (ret)
 			return ret;
 
-		tegra_gpio_enable(modem->wake_gpio);
-
 		/* enable IRQ for remote wakeup */
 		modem->irq = gpio_to_irq(modem->wake_gpio);
 
