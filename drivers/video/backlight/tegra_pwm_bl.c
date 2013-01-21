@@ -24,7 +24,6 @@
 #include <linux/delay.h>
 
 #include <mach/dc.h>
-#include <mach/panel_id.h>
 #include <mach/board_htc.h>
 
 extern int tegra_dsi_send_panel_short_cmd(struct tegra_dc *dc, u8 *pdata, u8 data_len);
