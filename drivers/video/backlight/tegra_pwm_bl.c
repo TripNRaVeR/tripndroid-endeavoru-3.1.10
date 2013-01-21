@@ -46,6 +46,7 @@ static ssize_t store(struct device *dev,
 	dc = tegra_dc_get_dc(0);
 
 	switch (PANEL_MASK(g_panel_id)) {
+		case PANEL_ID_SHARP_HX_XA:
 		case PANEL_ID_SHARP_HX_C3:
 		case PANEL_ID_SHARP_HX_C4:
 		case PANEL_ID_SHARP_HX:
