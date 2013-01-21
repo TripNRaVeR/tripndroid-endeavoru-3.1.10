@@ -1389,14 +1389,12 @@ void config_tegra_desk_aud_gpios(bool output, bool out_val)
 			pr_info("[CABLE] %s: TEGRA_GPIO_DESK_AUD dir NG\n", __func__);
 			return;
 		}
-		tegra_gpio_enable(TEGRA_GPIO_DESK_AUD);
 	}
 	else {
 		if (gpio_direction_input(TEGRA_GPIO_DESK_AUD) < 0) {
 			pr_info("[CABLE] %s: TEGRA_GPIO_DESK_AUD dir setup failed\n", __func__);
 			return;
 		}
-		tegra_gpio_enable(TEGRA_GPIO_DESK_AUD);
 	}
 }
 EXPORT_SYMBOL(config_tegra_desk_aud_gpios);
