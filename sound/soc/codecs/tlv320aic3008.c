@@ -39,7 +39,7 @@
 
 #include <../arch/arm/mach-tegra/htc_audio_power.h>
 
-#define AUD_CPU_FREQ_MIN 102000
+#define AUD_CPU_FREQ_MIN 51000
 
 /* for quattro --- */
 int64_t pwr_up_time;
