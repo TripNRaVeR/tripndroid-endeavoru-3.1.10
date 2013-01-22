@@ -112,9 +112,6 @@ static void vibrator_start(struct vibrator *vib)
 {
 	int ret, rc = 0;
 
-	if (debugmode == 1)
-		printk("[VIB] vibrator_start\n");
-
 	ret = regulator_is_enabled(regulator);
 	if (ret > 0)
 		regulator_disable(regulator);
@@ -131,15 +128,12 @@ static void vibrator_start(struct vibrator *vib)
 	if(vib->pdata->ena_gpio >= 0)
 		gpio_direction_output(vib->pdata->ena_gpio, 1);
 
-	I("[VIB]vibrator start\n");
 }
 
 static void vibrator_stop(struct vibrator *vib)
 {
 	int ret, rc = 0;;
 
-	if (debugmode == 1)
-		printk("[VIB] vibrator_stop\n");
 	if(vib->pdata->pwm_gpio >= 0) {
 		rc = pwm_config(vib->pdata->pwm_data.pwm_dev, ZERO_DUTY_US, PLAYBACK_PERIOD_US);
 		if (rc < 0) {
@@ -154,8 +148,6 @@ static void vibrator_stop(struct vibrator *vib)
 	if (ret > 0)
 		regulator_disable(regulator);
 	vib_state = 0;
-
-	I("[VIB]vibrator stop\n");
 }
 
 /*
@@ -171,7 +163,6 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 		return;
 	if (value) {
 		delay_value = value ;
-		printk(KERN_INFO "[VIB] vibration enable and duration time %d ms:%s(parent:%s): tgid=%d\n", value,current->comm, current->parent->comm, current->tgid);
 		disable_time = gettimeMs() + value + 4;
 		I("[VIB]vibrator hrtimer1 start\n");
 		hrtimer_start(&vib->vib_timer,
@@ -180,7 +171,6 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 		vibrator_start(vib);
 
 	} else {
-		printk("[VIB] vibration disable.\n");
 		vibrator_stop(vib);
 	}
 }
@@ -195,7 +185,6 @@ static void vib_work_func(struct work_struct *work)
 		hrtimer_start(&vib->vib_timer_feedback,
                               ktime_set((delay_value-real_time-1) / 1000, ((delay_value-real_time-1) % 1000) * 1000000),
                               HRTIMER_MODE_REL);
-		printk("[VIB]vibator work short , real_time = %d ,add timer =%d\n",real_time,delay_value-real_time);
 	}
 	else{
                 vibrator_stop(vib);
@@ -207,7 +196,6 @@ static void vib_work_func(struct work_struct *work)
 static void vib_work_feedback_func(struct work_struct *work)
 {
         struct vibrator *vib = container_of(work, struct vibrator, work_feedback);
-	I("[VIB]feedback work\n");
 	vibrator_stop(vib);
 }
 
