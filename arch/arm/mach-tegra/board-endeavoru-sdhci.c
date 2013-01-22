@@ -100,6 +100,8 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
 	.wp_gpio = -1,
 	.power_gpio = -1,
 	.tap_delay = 0x0F,
+	.suspend_gpiocfg = emmc_suspend_gpiocfg,
+	.resume_gpiocfg = emmc_resume_gpiocfg,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
