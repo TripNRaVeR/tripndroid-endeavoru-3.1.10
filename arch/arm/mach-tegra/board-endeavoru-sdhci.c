@@ -208,10 +208,6 @@ static int __init enterprise_wifi_init(void)
 	if (rc)
 		pr_err("WLAN_PWR gpio request failed:%d\n", rc);
 
-	rc = gpio_request(ENTERPRISE_WLAN_RST, "wlan_rst");
-	if (rc)
-		pr_err("WLAN_RST gpio request failed:%d\n", rc);
-
 	rc = gpio_request(ENTERPRISE_WLAN_WOW, "bcmsdh_sdmmc");
 	if (rc)
 		pr_err("WLAN_WOW gpio request failed:%d\n", rc);
@@ -219,10 +215,6 @@ static int __init enterprise_wifi_init(void)
 	rc = gpio_direction_output(ENTERPRISE_WLAN_PWR, 0);
 	if (rc)
 		pr_err("WLAN_PWR gpio direction configuration failed:%d\n", rc);
-
-	gpio_direction_output(ENTERPRISE_WLAN_RST, 0);
-	if (rc)
-		pr_err("WLAN_RST gpio direction configuration failed:%d\n", rc);
 
 	rc = gpio_direction_input(ENTERPRISE_WLAN_WOW);
 	if (rc)
