@@ -26,15 +26,12 @@
 #include <linux/slab.h>
 #include <linux/pwm.h>
 #include <linux/tegra_vibrator.h>
-#include <linux/pm_qos_params.h>
-#include <linux/cpufreq.h>
 #include <linux/sched.h>
 
 #include "../staging/android/timed_output.h"
 
-#define BOOST_CPU_FREQ_MIN 		475000
 #define PLAYBACK_PERIOD_US 		50000
-#define PLAYBACK_DUTY_US 		43000
+#define PLAYBACK_DUTY_US 		36500
 #define ZERO_DUTY_US 			25000
 
 #define D(x...)
@@ -49,7 +46,6 @@ struct vibrator {
 	struct hrtimer vib_timer;
 	struct hrtimer vib_timer_stop;
 	struct hrtimer vib_timer_feedback;
-	int cpulock;
 };
 
 struct vibrator *g_vib;
@@ -57,7 +53,6 @@ static struct regulator *regulator;
 static int debugmode;
 static struct workqueue_struct *vib_work_queue;
 static struct workqueue_struct *vib_work_feedback_queue;
-static struct pm_qos_request_list boost_cpu_freq_req;
 static unsigned long long disable_time;
 static int vib_state ;
 static unsigned long long enable_time;
@@ -116,9 +111,7 @@ static enum hrtimer_restart vib_timer_feedback_func(struct hrtimer *timer)
 static void vibrator_start(struct vibrator *vib)
 {
 	int ret, rc = 0;
-	I(" %s +++\n", __func__);
-	if (debugmode == 1)
-		printk("[VIB] vibrator_start\n");
+
 	ret = regulator_is_enabled(regulator);
 	if (ret > 0)
 		regulator_disable(regulator);
@@ -134,17 +127,13 @@ static void vibrator_start(struct vibrator *vib)
 	vib_state = 1;
 	if(vib->pdata->ena_gpio >= 0)
 		gpio_direction_output(vib->pdata->ena_gpio, 1);
-	I("[VIB]vibrator start\n");
-	I(" %s ---\n", __func__);
+
 }
 
 static void vibrator_stop(struct vibrator *vib)
 {
 	int ret, rc = 0;;
 
-	I(" %s +++\n", __func__);
-	if (debugmode == 1)
-		printk("[VIB] vibrator_stop\n");
 	if(vib->pdata->pwm_gpio >= 0) {
 		rc = pwm_config(vib->pdata->pwm_data.pwm_dev, ZERO_DUTY_US, PLAYBACK_PERIOD_US);
 		if (rc < 0) {
@@ -159,8 +148,6 @@ static void vibrator_stop(struct vibrator *vib)
 	if (ret > 0)
 		regulator_disable(regulator);
 	vib_state = 0;
-	I("[VIB]vibrator stop\n");
-	I(" %s ---\n", __func__);
 }
 
 /*
@@ -171,27 +158,11 @@ static void vibrator_stop(struct vibrator *vib)
 static void vibrator_enable(struct timed_output_dev *dev, int value)
 {
 	struct vibrator *vib = container_of(dev, struct vibrator, timed_dev);
-	struct cpufreq_policy policy;
-	bool is_only_cpu0_online = (! (cpu_online(1) || cpu_online(2) || cpu_online(3)) );
 
-	I(" %s +++\n", __func__);
 	if (value < 0)
 		return;
 	if (value) {
 		delay_value = value ;
-		printk(KERN_INFO "[VIB] vibration enable and duration time %d ms:%s(parent:%s): tgid=%d\n", value,current->comm, current->parent->comm, current->tgid);
-		if(value<=25) {
-			if(is_only_cpu0_online && cpufreq_get(0) < 475000) {
-				printk("[VIB] boost CPU#0 freq to 475MHZ\n");
-				/* To get policy of current cpu */
-				cpufreq_get_policy(&policy, smp_processor_id());
-				pm_qos_update_request(&boost_cpu_freq_req, (s32)BOOST_CPU_FREQ_MIN);
-				/* update frequency request right now */
-				cpufreq_driver_target(&policy,
-						BOOST_CPU_FREQ_MIN, CPUFREQ_RELATION_L);
-				vib->cpulock++;
-			}
-		}
 		disable_time = gettimeMs() + value + 4;
 		I("[VIB]vibrator hrtimer1 start\n");
 		hrtimer_start(&vib->vib_timer,
@@ -200,10 +171,8 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 		vibrator_start(vib);
 
 	} else {
-		printk("[VIB] vibration disable.\n");
 		vibrator_stop(vib);
 	}
-	I(" %s ---\n", __func__);
 }
 
 static void vib_work_func(struct work_struct *work)
@@ -212,37 +181,22 @@ static void vib_work_func(struct work_struct *work)
 	int real_time = 0;
 	real_time= gettimeMs()- enable_time;
 
-	I(" %s +++\n", __func__);
-
 	if( (delay_value-real_time) >= 3){
 		hrtimer_start(&vib->vib_timer_feedback,
                               ktime_set((delay_value-real_time-1) / 1000, ((delay_value-real_time-1) % 1000) * 1000000),
                               HRTIMER_MODE_REL);
-		printk("[VIB]vibator work short , real_time = %d ,add timer =%d\n",real_time,delay_value-real_time);
 	}
 	else{
                 vibrator_stop(vib);
                 I("[VIB]vibator work normal =%llu\n",gettimeMs()- enable_time );
 
 	}
-	if( vib->cpulock > 0 ) {
-		pm_qos_update_request(&boost_cpu_freq_req, (s32)PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
-		vib->cpulock--;
-	}
-	I(" %s ---\n", __func__);
 }
 
 static void vib_work_feedback_func(struct work_struct *work)
 {
         struct vibrator *vib = container_of(work, struct vibrator, work_feedback);
-	I("[VIB]feedback work\n");
-        I(" %s +++\n", __func__);
 	vibrator_stop(vib);
-        if( vib->cpulock > 0 ) {
-                pm_qos_update_request(&boost_cpu_freq_req, (s32)PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
-                vib->cpulock--;
-        }
-        I(" %s ---\n", __func__);
 }
 
 /*
@@ -303,7 +257,7 @@ static int vibrator_probe(struct platform_device *pdev)
 {
 	struct vibrator_platform_data *pdata = pdev->dev.platform_data;
 	struct vibrator *vib;
-	int rc=0;
+	int rc = 0;
 
 	printk("[VIB][PROBE] vibrator_probe +++\n");
 	if (!pdata)
@@ -314,7 +268,7 @@ static int vibrator_probe(struct platform_device *pdev)
 	vib->pdata=kzalloc(sizeof(struct vibrator_platform_data), GFP_KERNEL);
 	if(!(vib->pdata)){
 		rc = -ENOMEM;
-		pr_err("[VIB] %s: failed on allocate pm8xxx_pwm_data memory\n", __func__);
+		pr_err("[VIB] %s: failed on allocate tegra_vib_pwm_data memory\n", __func__);
 		goto err_platform_data_allocate;
 	}
 	vib_state = 0;
@@ -333,8 +287,6 @@ static int vibrator_probe(struct platform_device *pdev)
         vib->vib_timer_feedback.function = vib_timer_feedback_func;
 
 	vib->pdata->pwm_data.pwm_dev = pwm_request(vib->pdata->pwm_data.bank, "vibrator");
-	pm_qos_add_request(&boost_cpu_freq_req, PM_QOS_CPU_FREQ_MIN, (s32)PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
-	vib->cpulock = 0;
 
 	if(vib->pdata->ena_gpio >= 0) {
 		rc = gpio_request(vib->pdata->ena_gpio, "vibrator_ena");
@@ -435,7 +387,6 @@ static int vibrator_resume(struct platform_device *pdev)
 {
 	struct vibrator *vib = platform_get_drvdata(pdev);
 
-	printk("[VIB][RESUME] vibrator_resume +++\n");
 	if(vib->pdata->pwm_gpio >= 0) {
 		tegra_gpio_disable(vib->pdata->pwm_gpio);
 		vib->pwm_duty = PLAYBACK_DUTY_US;
@@ -463,7 +414,6 @@ static int __devexit vibrator_remove(struct platform_device *pdev)
 	regulator_put(regulator);
 	destroy_workqueue(vib_work_queue);
 	destroy_workqueue(vib_work_feedback_queue);
-	pm_qos_remove_request(&boost_cpu_freq_req);
 	return 0;
 }
 
@@ -491,3 +441,4 @@ static void __exit vibrator_exit(void)
 module_exit(vibrator_exit);
 
 MODULE_DESCRIPTION("tegra vibrator driver");
+
