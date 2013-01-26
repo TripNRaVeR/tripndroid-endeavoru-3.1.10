@@ -615,8 +615,6 @@ int __init enterprise_regulator_init(void)
 	/* Setting CPU voltage tolerance in lower side for 3000uV */
 	pdata_smps1_common.tolerance_uv = 3000;
 
-	tegra_gpio_enable(TEGRA_GPIO_PF7);
-
 	tps_platform.num_subdevs = ARRAY_SIZE(tps80031_devs_a03);
 	tps_platform.subdevs = tps80031_devs_a03;
 
